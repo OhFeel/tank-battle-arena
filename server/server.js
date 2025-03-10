@@ -68,6 +68,14 @@ function handleMessage(ws, playerId, data) {
         case 'ping':
             handlePing(ws, data);
             break;
+            
+        case 'map_initialized':
+            syncMapData(playerId, data.gameId, data.obstacles);
+            break;
+            
+        case 'spawn_powerup':
+            handlePowerUpSpawn(playerId, data.gameId, data.powerUp);
+            break;
     }
 }
 
@@ -96,31 +104,39 @@ function matchPlayers() {
         const player1 = waitingPlayers.shift();
         const player2 = waitingPlayers.shift();
         
-        // Create new game session
+        // Generate a seed for deterministic map generation
+        const mapSeed = generateSeed();
+        
+        // Create new game session with map seed
         const gameId = uuidv4();
         games.set(gameId, {
             id: gameId,
             players: [player1, player2],
             state: 'initializing',
-            startTime: Date.now()
+            startTime: Date.now(),
+            mapSeed: mapSeed,
+            obstacles: [],  // Will be populated when the first player shares their obstacle data
+            powerUps: []    // For tracking power-ups
         });
         
-        // Notify players about the match
+        // Notify players about the match and send the map seed
         player1.ws.send(JSON.stringify({
             type: 'game_found',
             gameId,
             playerNumber: 1,
-            opponent: player2.name
+            opponent: player2.name,
+            mapSeed: mapSeed
         }));
         
         player2.ws.send(JSON.stringify({
             type: 'game_found',
             gameId,
             playerNumber: 2,
-            opponent: player1.name
+            opponent: player1.name,
+            mapSeed: mapSeed
         }));
         
-        console.log(`Game ${gameId} created between ${player1.name} and ${player2.name}`);
+        console.log(`Game ${gameId} created between ${player1.name} and ${player2.name} with seed ${mapSeed}`);
     }
 }
 
@@ -138,9 +154,10 @@ function forwardGameInput(playerId, data) {
     const opponentIndex = playerIndex === 0 ? 1 : 0;
     const opponent = game.players[opponentIndex];
     
-    // Forward input to opponent
+    // Forward input to opponent with playerNumber included
     opponent.ws.send(JSON.stringify({
         type: 'opponent_input',
+        playerNumber: playerIndex + 1,
         input: data.input,
         timestamp: data.timestamp
     }));
@@ -238,6 +255,58 @@ function forwardTankState(playerId, data) {
         type: 'opponent_state_sync',
         tankState: data.tankState,
         timestamp: data.timestamp
+    }));
+}
+
+// Add a seed generator function
+function generateSeed() {
+    return Math.floor(Math.random() * 1000000);
+}
+
+// Function to synchronize map data across players
+function syncMapData(playerId, gameId, obstacleData) {
+    const game = games.get(gameId);
+    if (!game) return;
+    
+    // If obstacles array is empty, this is the first player sending data
+    if (game.obstacles.length === 0) {
+        game.obstacles = obstacleData;
+        console.log(`Map data initialized for game ${gameId}`);
+    }
+    
+    // Find the opponent player
+    const playerIndex = game.players.findIndex(p => p.id === playerId);
+    if (playerIndex === -1) return;
+    
+    const opponentIndex = playerIndex === 0 ? 1 : 0;
+    const opponent = game.players[opponentIndex];
+    
+    // Send the obstacle data to the opponent
+    opponent.ws.send(JSON.stringify({
+        type: 'map_sync',
+        obstacles: game.obstacles
+    }));
+}
+
+// Function to handle power-up spawning
+function handlePowerUpSpawn(playerId, gameId, powerUpData) {
+    const game = games.get(gameId);
+    if (!game) return;
+    
+    // Store the power-up data
+    game.powerUps.push(powerUpData);
+    
+    // Find the opponent player
+    const playerIndex = game.players.findIndex(p => p.id === playerId);
+    if (playerIndex === -1) return;
+    
+    const opponentIndex = playerIndex === 0 ? 1 : 0;
+    const opponent = game.players[opponentIndex];
+    
+    // Forward power-up data to opponent
+    opponent.ws.send(JSON.stringify({
+        type: 'spawn_powerup',
+        powerUp: powerUpData
     }));
 }
 
