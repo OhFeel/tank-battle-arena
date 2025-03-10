@@ -133,10 +133,10 @@ function matchPlayers() {
         // Generate a seed for deterministic map generation
         const mapSeed = generateSeed();
         
-        // Create initial game state
+        // Create initial game state with explicitly initialized powerUps array
         const gameState = createDefaultGameState(mapSeed);
         
-        // Make sure powerUps is initialized
+        // ALWAYS ensure powerUps is initialized
         gameState.powerUps = [];
         
         // Create new game session with game state
@@ -157,29 +157,37 @@ function matchPlayers() {
             playerNumber: tank.playerNumber
         }));
         
-        // Notify players about the match with tank positions
-        player1.ws.send(JSON.stringify({
-            type: 'game_found',
-            gameId,
-            playerNumber: 1,
-            opponent: player2.name,
-            mapSeed: mapSeed,
-            tankPositions: tankPositions
-        }));
-        
-        player2.ws.send(JSON.stringify({
-            type: 'game_found',
-            gameId,
-            playerNumber: 2,
-            opponent: player1.name,
-            mapSeed: mapSeed,
-            tankPositions: tankPositions
-        }));
-        
+        // Log that a game is being created
         console.log(`Game ${gameId} created between ${player1.name} and ${player2.name} with seed ${mapSeed}`);
-
-        // After creating the game, start powerup spawning with error handling
+        
         try {
+            // Notify player 1 about the match
+            player1.ws.send(JSON.stringify({
+                type: 'game_found',
+                gameId,
+                playerNumber: 1,
+                opponent: player2.name,
+                opponentName: player2.name, // Add this for client compatibility
+                mapSeed: mapSeed,
+                tankPositions: tankPositions
+            }));
+            
+            console.log(`Sent game_found to player 1 (${player1.name})`);
+            
+            // Notify player 2 about the match
+            player2.ws.send(JSON.stringify({
+                type: 'game_found',
+                gameId,
+                playerNumber: 2,
+                opponent: player1.name,
+                opponentName: player1.name, // Add this for client compatibility
+                mapSeed: mapSeed,
+                tankPositions: tankPositions
+            }));
+            
+            console.log(`Sent game_found to player 2 (${player2.name})`);
+            
+            // After creating the game, start powerup spawning with error handling
             setTimeout(() => {
                 // Check if game still exists before spawning
                 if (games.has(gameId)) {
@@ -187,7 +195,18 @@ function matchPlayers() {
                 }
             }, 5000); // Start spawning after 5 seconds
         } catch (error) {
-            console.error(`Error scheduling initial powerup for game ${gameId}:`, error);
+            console.error(`Error notifying players about game ${gameId}:`, error);
+            
+            // Clean up the game if notification fails
+            games.delete(gameId);
+            
+            // Try to return players to waiting queue if possible
+            if (player1 && player1.ws && player1.ws.readyState === WebSocket.OPEN) {
+                waitingPlayers.push(player1);
+            }
+            if (player2 && player2.ws && player2.ws.readyState === WebSocket.OPEN) {
+                waitingPlayers.push(player2);
+            }
         }
     }
 }
@@ -583,8 +602,19 @@ function verifySyncState(playerId, gameId, syncData) {
 
 // Add support for server-side powerup spawning
 function spawnPowerUp(gameId) {
+    // Check if the game still exists before proceeding
+    if (!games.has(gameId)) {
+        console.log(`Attempted to spawn powerup for non-existent game ${gameId}`);
+        return;
+    }
+
     const game = games.get(gameId);
-    if (!game || !game.state) return;
+    
+    // Check if game state exists
+    if (!game || !game.state) {
+        console.log(`Game ${gameId} has no valid state for powerup spawn`);
+        return;
+    }
     
     // Constants
     const powerUpSize = 30;
@@ -593,15 +623,25 @@ function spawnPowerUp(gameId) {
     const canvasHeight = 750;
     const maxPowerUps = 3;
     
-    // Initialize powerUps array if it doesn't exist
+    // ALWAYS initialize powerUps if it doesn't exist
     if (!game.state.powerUps) {
+        console.log(`Initializing powerUps array for game ${gameId}`);
         game.state.powerUps = [];
     }
     
     // Don't spawn if we already have max powerups
     if (game.state.powerUps.length >= maxPowerUps) {
-        // Schedule next spawn attempt
-        setTimeout(() => spawnPowerUp(gameId), 5000);
+        // Safely schedule next spawn attempt with error catching
+        try {
+            setTimeout(() => {
+                // Check again if game exists before calling
+                if (games.has(gameId)) {
+                    spawnPowerUp(gameId);
+                }
+            }, 5000);
+        } catch (error) {
+            console.error(`Error scheduling next powerup for game ${gameId}:`, error);
+        }
         return;
     }
     
@@ -611,40 +651,56 @@ function spawnPowerUp(gameId) {
         'mineLayer', 'spreadShot', 'magneticShield', 'invisibility', 'extraLife'
     ];
     
-    // Create a powerup at a random position
-    const x = margin + Math.random() * (canvasWidth - margin * 2);
-    const y = margin + Math.random() * (canvasHeight - margin * 2);
-    const type = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
-    
-    const powerUp = {
-        x, y, type,
-        width: powerUpSize,
-        height: powerUpSize
-    };
-    
-    // Add to game state
-    game.state.powerUps.push(powerUp);
-    
-    // Notify both players
-    for (const player of game.players) {
-        // Check if the player's connection is still active
-        if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
-            try {
-                player.ws.send(JSON.stringify({
-                    type: 'spawn_powerup',
-                    powerUp: powerUp
-                }));
-            } catch (error) {
-                console.error(`Error sending powerup to player ${player.id}:`, error);
+    try {
+        // Create a powerup at a random position
+        const x = margin + Math.random() * (canvasWidth - margin * 2);
+        const y = margin + Math.random() * (canvasHeight - margin * 2);
+        const type = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
+        
+        const powerUp = {
+            x, y, type,
+            width: powerUpSize,
+            height: powerUpSize
+        };
+        
+        // Add to game state
+        game.state.powerUps.push(powerUp);
+        
+        console.log(`Spawned powerup of type ${type} for game ${gameId}`);
+        
+        // Notify both players if they are still connected
+        for (const player of game.players) {
+            // Check if the player's connection is still active
+            if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
+                try {
+                    player.ws.send(JSON.stringify({
+                        type: 'spawn_powerup',
+                        powerUp: powerUp
+                    }));
+                } catch (error) {
+                    console.error(`Error sending powerup to player ${player.id}:`, error);
+                }
             }
         }
-    }
-    
-    // Schedule next powerup with error handling
-    try {
-        setTimeout(() => spawnPowerUp(gameId), 5000 + Math.random() * 10000);
+        
+        // Schedule next powerup with error handling
+        setTimeout(() => {
+            // Double-check if the game still exists
+            if (games.has(gameId)) {
+                spawnPowerUp(gameId);
+            } else {
+                console.log(`Not scheduling more powerups for ended game ${gameId}`);
+            }
+        }, 5000 + Math.random() * 10000);
     } catch (error) {
-        console.error(`Error scheduling next powerup for game ${gameId}:`, error);
+        console.error(`Error creating powerup for game ${gameId}:`, error);
+        
+        // Still try to schedule next attempt despite error
+        setTimeout(() => {
+            if (games.has(gameId)) {
+                spawnPowerUp(gameId);
+            }
+        }, 10000);
     }
 }
 

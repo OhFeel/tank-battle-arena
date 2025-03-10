@@ -1,0 +1,143 @@
+/* Styles for game UI elements and debug tools */
+
+/* Game info display */
+.game-info {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.player-stats {
+    display: flex;
+    gap: 20px;
+}
+
+.player-box {
+    padding: 5px 10px;
+    border-radius: 3px;
+}
+
+.player1-stats {
+    background: rgba(52, 152, 219, 0.5);
+}
+
+.player2-stats {
+    background: rgba(231, 76, 60, 0.5);
+}
+
+/* Tank health bars */
+.health-bar {
+    height: 8px;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.3);
+    margin-top: 3px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.health-fill {
+    height: 100%;
+    background: #2ecc71;
+    transition: width 0.3s;
+}
+
+/* Ammo indicator */
+.ammo-indicator {
+    display: flex;
+    gap: 3px;
+    margin-top: 3px;
+}
+
+.ammo-bullet {
+    width: 8px;
+    height: 8px;
+    background: rgba(255, 255, 0, 0.7);
+    border-radius: 50%;
+}
+
+.ammo-empty {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Power-up indicators */
+.power-up-indicators {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    display: flex;
+    gap: 5px;
+    pointer-events: none;
+}
+
+.power-up-icon {
+    width: 30px;
+    height: 30px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-weight: bold;
+}
+
+/* Network status indicator */
+.network-indicator {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    z-index: 10;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+
+.status-connected {
+    background: #2ecc71;
+}
+
+.status-disconnected {
+    background: #e74c3c;
+}
+
+/* Debug overlay styles already included in the overlay class itself */
+
+/* Notification toast */
+.toast-notification {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-size: 14px;
+    z-index: 100;
+    animation: fadeInOut 3s ease forwards;
+}
+
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translate(-50%, 20px); }
+    10% { opacity: 1; transform: translate(-50%, 0); }
+    90% { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -20px); }
+}

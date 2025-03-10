@@ -13,6 +13,7 @@
         .error-message { color: white; text-align: center; padding: 20px; }
     </style>
     <link rel="stylesheet" href="css/online.css">
+    <link rel="stylesheet" href="css/game-ui.css">
 </head>
 <body>
     <div class="game-container">
@@ -110,8 +111,67 @@
             }
         });
     </script>
-    <script src="js/game.js"></script>
     <script src="js/network.js"></script>
+    <script src="js/game.js"></script>
     <script src="js/online-ui.js"></script>
+    <script src="js/debug-overlay.js"></script>
+    <script src="js/network-ui.js"></script>
+    <script src="js/game-recovery.js"></script>
+    <script src="js/diagnostic.js"></script><script src="js/debug-logger.js"></script>
+    <script src="js/force-start.js"></script>
+    <script src="js/connection-fix.js"></script>
+</body>
+</html>    <script>
+
+        // Add a check for stuck game state
+        window.addEventListener('load', function() {
+            // Add a visible loading indicator
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = 'game-loading';
+            loadingDiv.style.position = 'fixed';
+            loadingDiv.style.top = '10px';
+            loadingDiv.style.left = '50%';
+            loadingDiv.style.transform = 'translateX(-50%)';
+            loadingDiv.style.background = 'rgba(0, 0, 0, 0.7)';
+            loadingDiv.style.color = 'white';
+            loadingDiv.style.padding = '8px 15px';
+            loadingDiv.style.borderRadius = '4px';
+            loadingDiv.style.zIndex = '9999';
+            loadingDiv.textContent = 'Connecting to server...';
+            document.body.appendChild(loadingDiv);
+            
+            // Update loading status based on network state
+            function updateLoadingStatus() {
+                if (!window.networkManager) return;
+                
+                if (networkManager.connected) {
+                    loadingDiv.textContent = 'Connected to server';
+                    loadingDiv.style.background = 'rgba(46, 204, 113, 0.7)';
+                    
+                    if (networkManager.gameId) {
+                        loadingDiv.textContent = 'Game found, initializing...';
+                    }
+                    
+                    if (window.gameState && gameState.active) {
+                        loadingDiv.style.display = 'none';
+                    }
+                } else {
+                    loadingDiv.textContent = 'Connecting to server...';
+                    loadingDiv.style.background = 'rgba(231, 76, 60, 0.7)';
+                }
+            }
+            
+            // Update status regularly
+            const statusInterval = setInterval(updateLoadingStatus, 1000);
+            
+            // Hide after 15 seconds regardless of state
+            setTimeout(() => {
+                if (loadingDiv.parentNode) {
+                    loadingDiv.parentNode.removeChild(loadingDiv);
+                }
+                clearInterval(statusInterval);
+            }, 15000);
+        });
+    </script>
 </body>
 </html>
