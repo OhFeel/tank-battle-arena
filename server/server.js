@@ -53,12 +53,20 @@ function handleMessage(ws, playerId, data) {
             forwardGameInput(playerId, data);
             break;
             
+        case 'sync_state':
+            forwardTankState(playerId, data);
+            break;
+            
         case 'game_state':
             syncGameState(playerId, data.gameId, data.state);
             break;
             
         case 'cancel_matchmaking':
             cancelMatchmaking(playerId);
+            break;
+            
+        case 'ping':
+            handlePing(ws, data);
             break;
     }
 }
@@ -201,6 +209,36 @@ function cancelMatchmaking(playerId) {
         waitingPlayers.splice(index, 1);
         console.log(`Player ${playerId} canceled matchmaking`);
     }
+}
+
+// Add this function to handle pings
+function handlePing(ws, data) {
+    ws.send(JSON.stringify({
+        type: 'pong',
+        timestamp: data.timestamp
+    }));
+}
+
+// Add this function to handle full state syncing
+function forwardTankState(playerId, data) {
+    const gameId = data.gameId;
+    const game = games.get(gameId);
+    
+    if (!game) return;
+    
+    // Find opponent
+    const playerIndex = game.players.findIndex(p => p.id === playerId);
+    if (playerIndex === -1) return;
+    
+    const opponentIndex = playerIndex === 0 ? 1 : 0;
+    const opponent = game.players[opponentIndex];
+    
+    // Forward state to opponent
+    opponent.ws.send(JSON.stringify({
+        type: 'opponent_state_sync',
+        tankState: data.tankState,
+        timestamp: data.timestamp
+    }));
 }
 
 // Start server
