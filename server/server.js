@@ -84,6 +84,10 @@ function handleMessage(ws, playerId, data) {
         case 'verify_sync':
             verifySyncState(playerId, data.gameId, data.syncData);
             break;
+
+        case 'collect_powerup':
+            handlePowerUpCollection(data.gameId, data.playerIndex, data.powerUpIndex);
+            break;
     }
 }
 
@@ -156,10 +160,15 @@ function matchPlayers() {
         }));
         
         console.log(`Game ${gameId} created between ${player1.name} and ${player2.name} with seed ${mapSeed}`);
+
+        // After creating the game, start powerup spawning
+        setTimeout(() => {
+            spawnPowerUp(gameId);
+        }, 5000); // Start spawning after 5 seconds
     }
 }
 
-// Forward game input to opponent
+// Add a more robust player movement handling function
 function forwardGameInput(playerId, data) {
     const gameId = data.gameId;
     const game = games.get(gameId);
@@ -174,10 +183,28 @@ function forwardGameInput(playerId, data) {
     const opponentIndex = playerIndex === 0 ? 1 : 0;
     const opponent = game.players[opponentIndex];
     
-    // Apply the input to the server's game state
+    // Update server's game state with player input
+    const tankIndex = playerIndex;
+    const tankState = game.state.tanks[tankIndex];
+    
+    // Record previous state for change detection
+    const prevPos = { 
+        x: tankState.x, 
+        y: tankState.y, 
+        angle: tankState.angle 
+    };
+    
+    // Apply input to server's game state
     applyInputToGameState(game.state, playerIndex + 1, data.input);
     
-    // Forward input to opponent with authoritative position
+    // Check if position actually changed
+    const positionChanged = (
+        prevPos.x !== tankState.x || 
+        prevPos.y !== tankState.y || 
+        prevPos.angle !== tankState.angle
+    );
+    
+    // Forward input to opponent with server's authoritative position
     opponent.ws.send(JSON.stringify({
         type: 'opponent_input',
         playerNumber: playerIndex + 1,
@@ -185,13 +212,100 @@ function forwardGameInput(playerId, data) {
             ...data.input,
             // Include server's authoritative position
             serverPosition: {
-                x: game.state.tanks[playerIndex].x,
-                y: game.state.tanks[playerIndex].y,
-                angle: game.state.tanks[playerIndex].angle
-            }
+                x: tankState.x,
+                y: tankState.y,
+                angle: tankState.angle
+            },
+            positionChanged: positionChanged
         },
         timestamp: data.timestamp
     }));
+    
+    // If position changed significantly, also send confirmation back to the player
+    if (positionChanged) {
+        const player = game.players[playerIndex];
+        player.ws.send(JSON.stringify({
+            type: 'position_confirmation',
+            position: {
+                x: tankState.x,
+                y: tankState.y,
+                angle: tankState.angle
+            },
+            timestamp: Date.now()
+        }));
+    }
+}
+
+// Improve server-side physics to prevent position rubber-banding
+function applyInputToGameState(gameState, playerNumber, input) {
+    const tankIndex = playerNumber - 1;
+    if (!gameState.tanks || tankIndex >= gameState.tanks.length) return;
+    
+    const tank = gameState.tanks[tankIndex];
+    
+    // Update movement state
+    if (input.moving !== undefined) {
+        tank.moving = input.moving;
+        
+        // Apply actual movement based on input
+        const moveSpeed = 1.5; // Base speed
+        const turnSpeed = 0.03;
+        
+        // Handle rotation
+        if (tank.moving.left) {
+            tank.angle -= turnSpeed;
+        }
+        if (tank.moving.right) {
+            tank.angle += turnSpeed;
+        }
+        
+        // Handle forward/backward movement with proper physics
+        let moveX = 0;
+        let moveY = 0;
+        
+        if (tank.moving.forward) {
+            moveX = Math.cos(tank.angle) * moveSpeed;
+            moveY = Math.sin(tank.angle) * moveSpeed;
+        }
+        if (tank.moving.backward) {
+            moveX = -Math.cos(tank.angle) * moveSpeed * 0.5;
+            moveY = -Math.sin(tank.angle) * moveSpeed * 0.5;
+        }
+        
+        // Apply movement
+        if (moveX !== 0 || moveY !== 0) {
+            // Check for collisions with map boundaries
+            const newX = tank.x + moveX;
+            const newY = tank.y + moveY;
+            
+            const tankWidth = 30;
+            const tankHeight = 30;
+            const canvasWidth = 1000;
+            const canvasHeight = 750;
+            
+            // Boundary checks
+            if (newX >= 0 && newX + tankWidth <= canvasWidth) {
+                tank.x = newX;
+            }
+            if (newY >= 0 && newY + tankHeight <= canvasHeight) {
+                tank.y = newY;
+            }
+        }
+    }
+    
+    // Update shooting state
+    if (input.shooting !== undefined) {
+        tank.shooting = input.shooting;
+        
+        // Handle shooting logic if needed
+        if (tank.shooting && tank.canShoot && tank.ammo > 0) {
+            // Server-side shooting logic would go here
+            // This would need to handle ammo, reloading, etc.
+        }
+    }
+    
+    // Record the last update time
+    gameState.lastUpdateTime = Date.now();
 }
 
 // Sync game state
@@ -299,9 +413,14 @@ function syncMapData(playerId, gameId, obstacleData) {
     const game = games.get(gameId);
     if (!game) return;
     
+    // Initialize obstacles array in game state if it doesn't exist
+    if (!game.state.obstacles) {
+        game.state.obstacles = [];
+    }
+    
     // If obstacles array is empty, this is the first player sending data
-    if (game.obstacles.length === 0) {
-        game.obstacles = obstacleData;
+    if (game.state.obstacles.length === 0) {
+        game.state.obstacles = obstacleData;
         console.log(`Map data initialized for game ${gameId}`);
     }
     
@@ -315,7 +434,7 @@ function syncMapData(playerId, gameId, obstacleData) {
     // Send the obstacle data to the opponent
     opponent.ws.send(JSON.stringify({
         type: 'map_sync',
-        obstacles: game.obstacles
+        obstacles: game.state.obstacles
     }));
 }
 
@@ -325,7 +444,10 @@ function handlePowerUpSpawn(playerId, gameId, powerUpData) {
     if (!game) return;
     
     // Store the power-up data
-    game.powerUps.push(powerUpData);
+    if (!game.state.powerUps) {
+        game.state.powerUps = [];
+    }
+    game.state.powerUps.push(powerUpData);
     
     // Find the opponent player
     const playerIndex = game.players.findIndex(p => p.id === playerId);
@@ -360,21 +482,29 @@ function createDefaultGameState(mapSeed) {
     
     return {
         mapSeed,
-        obstacles: [],
+        obstacles: [], // Initialize empty obstacles array
         tanks: [
             {
                 x: p1Spawn.x,
                 y: p1Spawn.y,
                 angle: 0,
                 lives: 3,
-                playerNumber: 1
+                playerNumber: 1,
+                moving: { forward: false, backward: false, left: false, right: false },
+                shooting: false,
+                canShoot: true,
+                ammo: 5
             },
             {
                 x: p2Spawn.x,
                 y: p2Spawn.y,
                 angle: Math.PI, // Face opposite direction
                 lives: 3,
-                playerNumber: 2
+                playerNumber: 2,
+                moving: { forward: false, backward: false, left: false, right: false },
+                shooting: false,
+                canShoot: true,
+                ammo: 5
             }
         ],
         powerUps: [],
@@ -427,46 +557,86 @@ function verifySyncState(playerId, gameId, syncData) {
     }));
 }
 
-// Apply player input to server game state
-function applyInputToGameState(gameState, playerNumber, input) {
-    const tankIndex = playerNumber - 1;
-    const tank = gameState.tanks[tankIndex];
+// Add support for server-side powerup spawning
+function spawnPowerUp(gameId) {
+    const game = games.get(gameId);
+    if (!game || !game.state) return;
     
-    // Update movement state
-    if (input.moving !== undefined) {
-        tank.moving = input.moving;
+    // Constants
+    const powerUpSize = 30;
+    const margin = 60;
+    const canvasWidth = 1000;
+    const canvasHeight = 750;
+    const maxPowerUps = 3;
+    
+    // Don't spawn if we already have max powerups
+    if (!game.state.powerUps) {
+        game.state.powerUps = [];
     }
     
-    // Update position from client (with validation)
-    if (input.position) {
-        // Limit the maximum position change to prevent cheating
-        const maxPositionChange = 10;
-        const dx = input.position.x - tank.x;
-        const dy = input.position.y - tank.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance <= maxPositionChange) {
-            tank.x = input.position.x;
-            tank.y = input.position.y;
-        } else {
-            // If change is too large, move in the same direction but limit the distance
-            const factor = maxPositionChange / distance;
-            tank.x += dx * factor;
-            tank.y += dy * factor;
-        }
+    if (game.state.powerUps.length >= maxPowerUps) {
+        // Schedule next spawn attempt
+        setTimeout(() => spawnPowerUp(gameId), 5000);
+        return;
     }
     
-    // Update angle
-    if (input.angle !== undefined) {
-        tank.angle = input.angle;
+    // Power up types
+    const POWER_UP_TYPES = [
+        'shield', 'ricochet', 'piercing', 'speedBoost', 'rapidFire',
+        'mineLayer', 'spreadShot', 'magneticShield', 'invisibility', 'extraLife'
+    ];
+    
+    // Create a powerup at a random position
+    const x = margin + Math.random() * (canvasWidth - margin * 2);
+    const y = margin + Math.random() * (canvasHeight - margin * 2);
+    const type = POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)];
+    
+    const powerUp = {
+        x, y, type,
+        width: powerUpSize,
+        height: powerUpSize
+    };
+    
+    // Add to game state
+    game.state.powerUps.push(powerUp);
+    
+    // Notify both players
+    for (const player of game.players) {
+        player.ws.send(JSON.stringify({
+            type: 'spawn_powerup',
+            powerUp: powerUp
+        }));
     }
     
-    // Record the last update time
-    gameState.lastUpdateTime = Date.now();
+    // Schedule next powerup
+    setTimeout(() => spawnPowerUp(gameId), 5000 + Math.random() * 10000);
+}
+
+// Add powerup collection handling
+function handlePowerUpCollection(gameId, playerIndex, powerUpIndex) {
+    const game = games.get(gameId);
+    if (!game || !game.state || !game.state.powerUps) return;
+    
+    // Make sure the powerup exists
+    if (powerUpIndex < 0 || powerUpIndex >= game.state.powerUps.length) return;
+    
+    // Remove the powerup from game state
+    const powerUp = game.state.powerUps[powerUpIndex];
+    game.state.powerUps.splice(powerUpIndex, 1);
+    
+    // Notify both players
+    for (const player of game.players) {
+        player.ws.send(JSON.stringify({
+            type: 'powerup_collected',
+            playerNumber: playerIndex + 1,
+            powerUpIndex: powerUpIndex,
+            powerUpType: powerUp.type
+        }));
+    }
 }
 
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
