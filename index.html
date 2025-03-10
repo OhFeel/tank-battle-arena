@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tank Battle Arena</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet">
+    <style>
+        /* Fallback styles in case external CSS fails to load */
+        body { background-color: #2c3e50; margin: 0; font-family: sans-serif; }
+        .game-container { width: 800px; height: 600px; margin: 0 auto; position: relative; }
+        .error-message { color: white; text-align: center; padding: 20px; }
+    </style>
+    <link rel="stylesheet" href="css/online.css">
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="startScreen" class="overlay">
+            <h1>Tank Battle Arena</h1>
+            <button id="startButton" class="game-button pulse-button">Start Game</button>
+            <button id="settingsButton" class="game-button">Settings</button>
+            <div class="controls-info">
+                <div class="player">
+                    <h3>Player 1 (Blue)</h3>
+                    <p>Movement: W,A,S,D</p>
+                    <p>Shoot: SPACE</p>
+                </div>
+                <div class="player">
+                    <h3>Player 2 (Red)</h3>
+                    <p>Movement: ↑,←,↓,→</p>
+                    <p>Shoot: /</p>
+                </div>
+            </div>
+        </div>
+        
+        <div id="settingsMenu" class="overlay hidden">
+            <h2>Settings</h2>
+            <div class="setting-item">
+                <label for="musicVolume">Music Volume:</label>
+                <input type="range" id="musicVolume" min="0" max="1" step="0.05" value="0.5">
+                <span id="musicVolumeValue" class="volume-value">50%</span>
+            </div>
+            <div class="setting-item">
+                <label for="sfxVolume">SFX Volume:</label>
+                <input type="range" id="sfxVolume" min="0" max="1" step="0.05" value="0.7">
+                <span id="sfxVolumeValue" class="volume-value">70%</span>
+            </div>
+            <div class="settings-actions">
+                <button id="backButton" class="game-button">Save & Return</button>
+            </div>
+        </div>
+        
+        <div id="gameOverScreen" class="overlay hidden">
+            <h2 id="winnerText">Player X Wins!</h2>
+            <div id="gameStats">
+                <p>Shots Fired: <span id="shotsFired">0</span></p>
+                <p>Power-ups Collected: <span id="powerupsCollected">0</span></p>
+            </div>
+            <button id="restartButton" class="game-button">Play Again</button>
+            <button id="menuButton" class="game-button">Main Menu</button>
+        </div>
+        
+        <div id="countdownScreen" class="overlay hidden">
+            <h2 id="countdownText">3</h2>
+            <p class="countdown-info">Get ready!</p>
+        </div>
+
+        <!-- Error message div -->
+        <div id="errorMessage" class="error-message" style="display:none;">
+            Error loading game resources. Check browser console for details.
+        </div>
+    </div>
+
+    <!-- Audio elements -->
+    <audio id="backgroundMusic" loop>
+        <source src="audio/background_music.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="shootSound">
+        <source src="audio/shoot.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="explosionSound">
+        <source src="audio/explosion.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="powerupSound">
+        <source src="audio/powerup.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="bounceSound">
+        <source src="audio/bounce.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- Load scripts -->
+    <script src="js/audio-fix.js"></script>
+    <script>
+        // Error handling for script loading
+        window.addEventListener('error', function(e) {
+            console.error('Script error:', e);
+            document.getElementById('errorMessage').style.display = 'block';
+        });
+        
+        // Check if CSS loaded properly
+        window.addEventListener('load', function() {
+            const gameContainer = document.querySelector('.game-container');
+            const computedStyle = window.getComputedStyle(gameContainer);
+            
+            if (computedStyle.width !== '800px') {
+                console.warn('CSS may not be loading correctly');
+            }
+        });
+    </script>
+    <script src="js/game.js"></script>
+    <script src="js/network.js"></script>
+    <script src="js/online-ui.js"></script>
+</body>
+</html>
