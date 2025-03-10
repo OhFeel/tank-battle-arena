@@ -44,50 +44,64 @@ wss.on('connection', (ws) => {
 
 // Message handler
 function handleMessage(ws, playerId, data) {
-    switch(data.type) {
-        case 'find_game':
-            findGame(ws, playerId, data.name);
-            break;
-            
-        case 'game_input':
-            forwardGameInput(playerId, data);
-            break;
-            
-        case 'sync_state':
-            forwardTankState(playerId, data);
-            break;
-            
-        case 'game_state':
-            syncGameState(playerId, data.gameId, data.state);
-            break;
-            
-        case 'cancel_matchmaking':
-            cancelMatchmaking(playerId);
-            break;
-            
-        case 'ping':
-            handlePing(ws, data);
-            break;
-            
-        case 'map_initialized':
-            syncMapData(playerId, data.gameId, data.obstacles);
-            break;
-            
-        case 'spawn_powerup':
-            handlePowerUpSpawn(playerId, data.gameId, data.powerUp);
-            break;
+    try {
+        switch(data.type) {
+            case 'find_game':
+                findGame(ws, playerId, data.name);
+                break;
+                
+            case 'game_input':
+                forwardGameInput(playerId, data);
+                break;
+                
+            case 'sync_state':
+                forwardTankState(playerId, data);
+                break;
+                
+            case 'game_state':
+                syncGameState(playerId, data.gameId, data.state);
+                break;
+                
+            case 'cancel_matchmaking':
+                cancelMatchmaking(playerId);
+                break;
+                
+            case 'ping':
+                handlePing(ws, data);
+                break;
+                
+            case 'map_initialized':
+                syncMapData(playerId, data.gameId, data.obstacles);
+                break;
+                
+            case 'spawn_powerup':
+                handlePowerUpSpawn(playerId, data.gameId, data.powerUp);
+                break;
 
-        case 'request_game_state':
-            sendInitialGameState(playerId, data.gameId);
-            break;
+            case 'request_game_state':
+                sendInitialGameState(playerId, data.gameId);
+                break;
+            
+            case 'verify_sync':
+                verifySyncState(playerId, data.gameId, data.syncData);
+                break;
+
+            case 'collect_powerup':
+                handlePowerUpCollection(data.gameId, data.playerIndex, data.powerUpIndex);
+                break;
+        }
+    } catch (error) {
+        console.error(`Error handling message of type ${data?.type} from player ${playerId}:`, error);
         
-        case 'verify_sync':
-            verifySyncState(playerId, data.gameId, data.syncData);
-            break;
-
-        case 'collect_powerup':
-            handlePowerUpCollection(data.gameId, data.playerIndex, data.powerUpIndex);
-            break;
+        // Try to send an error response to the client
+        try {
+            ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Server error processing your request'
+            }));
+        } catch (sendError) {
+            console.error('Failed to send error response:', sendError);
+        }
     }
 }
 
@@ -121,6 +135,9 @@ function matchPlayers() {
         
         // Create initial game state
         const gameState = createDefaultGameState(mapSeed);
+        
+        // Make sure powerUps is initialized
+        gameState.powerUps = [];
         
         // Create new game session with game state
         const gameId = uuidv4();
@@ -161,10 +178,17 @@ function matchPlayers() {
         
         console.log(`Game ${gameId} created between ${player1.name} and ${player2.name} with seed ${mapSeed}`);
 
-        // After creating the game, start powerup spawning
-        setTimeout(() => {
-            spawnPowerUp(gameId);
-        }, 5000); // Start spawning after 5 seconds
+        // After creating the game, start powerup spawning with error handling
+        try {
+            setTimeout(() => {
+                // Check if game still exists before spawning
+                if (games.has(gameId)) {
+                    spawnPowerUp(gameId);
+                }
+            }, 5000); // Start spawning after 5 seconds
+        } catch (error) {
+            console.error(`Error scheduling initial powerup for game ${gameId}:`, error);
+        }
     }
 }
 
@@ -507,7 +531,7 @@ function createDefaultGameState(mapSeed) {
                 ammo: 5
             }
         ],
-        powerUps: [],
+        powerUps: [], // Ensure powerUps is initialized
         bullets: [],
         mines: [],
         lastUpdateTime: Date.now()
@@ -569,11 +593,12 @@ function spawnPowerUp(gameId) {
     const canvasHeight = 750;
     const maxPowerUps = 3;
     
-    // Don't spawn if we already have max powerups
+    // Initialize powerUps array if it doesn't exist
     if (!game.state.powerUps) {
         game.state.powerUps = [];
     }
     
+    // Don't spawn if we already have max powerups
     if (game.state.powerUps.length >= maxPowerUps) {
         // Schedule next spawn attempt
         setTimeout(() => spawnPowerUp(gameId), 5000);
@@ -602,20 +627,37 @@ function spawnPowerUp(gameId) {
     
     // Notify both players
     for (const player of game.players) {
-        player.ws.send(JSON.stringify({
-            type: 'spawn_powerup',
-            powerUp: powerUp
-        }));
+        // Check if the player's connection is still active
+        if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
+            try {
+                player.ws.send(JSON.stringify({
+                    type: 'spawn_powerup',
+                    powerUp: powerUp
+                }));
+            } catch (error) {
+                console.error(`Error sending powerup to player ${player.id}:`, error);
+            }
+        }
     }
     
-    // Schedule next powerup
-    setTimeout(() => spawnPowerUp(gameId), 5000 + Math.random() * 10000);
+    // Schedule next powerup with error handling
+    try {
+        setTimeout(() => spawnPowerUp(gameId), 5000 + Math.random() * 10000);
+    } catch (error) {
+        console.error(`Error scheduling next powerup for game ${gameId}:`, error);
+    }
 }
 
 // Add powerup collection handling
 function handlePowerUpCollection(gameId, playerIndex, powerUpIndex) {
     const game = games.get(gameId);
-    if (!game || !game.state || !game.state.powerUps) return;
+    if (!game || !game.state) return;
+    
+    // Initialize powerUps if it doesn't exist
+    if (!game.state.powerUps) {
+        game.state.powerUps = [];
+        return; // Nothing to collect if the array was just initialized
+    }
     
     // Make sure the powerup exists
     if (powerUpIndex < 0 || powerUpIndex >= game.state.powerUps.length) return;
@@ -626,12 +668,18 @@ function handlePowerUpCollection(gameId, playerIndex, powerUpIndex) {
     
     // Notify both players
     for (const player of game.players) {
-        player.ws.send(JSON.stringify({
-            type: 'powerup_collected',
-            playerNumber: playerIndex + 1,
-            powerUpIndex: powerUpIndex,
-            powerUpType: powerUp.type
-        }));
+        if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
+            try {
+                player.ws.send(JSON.stringify({
+                    type: 'powerup_collected',
+                    playerNumber: playerIndex + 1,
+                    powerUpIndex: powerUpIndex,
+                    powerUpType: powerUp.type
+                }));
+            } catch (error) {
+                console.error(`Error sending powerup collection to player ${player.id}:`, error);
+            }
+        }
     }
 }
 
@@ -639,4 +687,15 @@ function handlePowerUpCollection(gameId, playerIndex, powerUpIndex) {
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+});
+
+// Add server health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        uptime: process.uptime(),
+        timestamp: Date.now(),
+        games: games.size,
+        waitingPlayers: waitingPlayers.length
+    });
 });
