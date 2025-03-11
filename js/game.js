@@ -1,8 +1,8 @@
 // Game Canvas Setup
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-canvas.width = 1000; // Increased from 800 for more space
-canvas.height = 750; // Increased from 600 for more space
+canvas.width = 1000;
+canvas.height = 750;
 
 // DOM Elements
 const startScreen = document.getElementById('startScreen');
@@ -78,21 +78,9 @@ const POWER_UP_TYPES = {
     MEGA_BULLET: 'megaBullet',
     TELEPORT: 'teleport',
     EMP_BLAST: 'empBlast',
-    EXTRA_LIFE: 'extraLife'
+    EXTRA_LIFE: 'extraLife',
+HOMING_MISSILE: 'homingMissile'
 };
-
-// Enhanced online mode variables
-let onlineMode = false;
-let networkReady = false;
-let localPlayerNumber = 0;
-let inputBuffer = [];
-let lastSyncTime = 0;
-const SYNC_INTERVAL = 50; // Sync more frequently (was 100)
-let lastFullSyncTime = 0;
-const FULL_SYNC_INTERVAL = 500; // Full state sync every 0.5 seconds
-let remoteTankState = null; // Store last received state from opponent
-let interpolationFactor = 0.2; // How quickly to move toward target position (0-1)
-
 // Tank class
 class Tank {
     constructor(x, y, color, controls, playerNumber) {
@@ -130,6 +118,7 @@ class Tank {
         this.invisibility = false;
         this.megaBullet = false;
         this.empActive = false;
+        this.homingMissile = false;
         
         // Power-up timers
         this.shieldTimer = 0;
@@ -158,50 +147,6 @@ class Tank {
                 this.shieldTimer = 3000; // 3 seconds of shield after respawn
             }
             return;
-        }
-
-        // If we have target position/angle for network interpolation
-        if (onlineMode && this.targetX !== undefined && this.targetY !== undefined) {
-            const distX = Math.abs(this.targetX - this.x);
-            const distY = Math.abs(this.targetY - this.y);
-            
-            // Use different interpolation factors based on distance
-            let factor = interpolationFactor;
-            if (distX > 20 || distY > 20) {
-                // If far away, move faster to catch up
-                factor = 0.5;
-            } else if (distX > 10 || distY > 10) {
-                factor = 0.3;
-            }
-            
-            // Use deltaTime-based interpolation
-            const adjFactor = 1.0 - Math.pow(1.0 - factor, deltaTime / 16);
-            
-            this.x += (this.targetX - this.x) * adjFactor;
-            this.y += (this.targetY - this.y) * adjFactor;
-            
-            // Snap when very close
-            if (distX < 0.5) this.x = this.targetX;
-            if (distY < 0.5) this.y = this.targetY;
-        }
-        
-        // Angle interpolation with deltaTime
-        if (this.targetAngle !== undefined) {
-            // Find shortest path to target angle (handle wrapping)
-            let angleDiff = this.targetAngle - this.angle;
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-            
-            // Delta-time based interpolation
-            const adjFactor = 1.0 - Math.pow(1.0 - interpolationFactor, deltaTime / 16);
-            this.angle += angleDiff * adjFactor;
-            
-            // Normalize angle to [0, 2π)
-            while (this.angle < 0) this.angle += Math.PI * 2;
-            while (this.angle >= Math.PI * 2) this.angle -= Math.PI * 2;
-            
-            // Snap when close
-            if (Math.abs(angleDiff) < 0.05) this.angle = this.targetAngle;
         }
 
         // Movement
@@ -283,6 +228,7 @@ class Tank {
         }
     }
     
+    // ... Rest of Tank class methods remain the same
     updatePowerUpTimers(deltaTime) {
         // Update power-up timers
         if (this.shield) {
@@ -340,8 +286,6 @@ class Tank {
                 // Bullet got caught in magnetic shield
                 bullets.splice(i, 1);
                 
-                // Visual effect could be added here
-                
                 // Play sound
                 playSound(bounceSound);
             }
@@ -383,26 +327,49 @@ class Tank {
     shoot() {
         if (this.ammo <= 0 || !this.canShoot || this.empActive) return;
 
-        if (this.spreadShot > 0) {
-            this.shootSpread();
+        // Store the bullet properties we'll use
+        let bulletProperties = {
+            isHoming: this.homingMissile,
+            isSpread: this.spreadShot > 0,
+            isMega: this.megaBullet,
+            ricochet: this.ricochet,
+            piercing: this.piercing
+        };
+        
+        // Handle the special bullet types (prioritize in this order)
+        if (bulletProperties.isSpread) {
+            this.shootSpread(bulletProperties);
             this.spreadShot--;
             return;
         }
         
-        if (this.megaBullet) {
-            this.shootMegaBullet();
+        if (bulletProperties.isHoming && bulletProperties.isMega) {
+            this.shootHomingMegaBullet(bulletProperties);
+            this.homingMissile = false;
+            this.megaBullet = false;
+            return;
+        }
+        
+        if (bulletProperties.isHoming) {
+            this.shootHomingMissile(bulletProperties);
+            this.homingMissile = false;
+            return;
+        }
+        
+        if (bulletProperties.isMega) {
+            this.shootMegaBullet(bulletProperties);
             this.megaBullet = false;
             return;
         }
 
-        // Create regular bullet
+        // Create regular bullet with any remaining properties
         let bullet = new Bullet(
             this.x + this.width / 2 + Math.cos(this.angle) * this.width,
             this.y + this.height / 2 + Math.sin(this.angle) * this.height,
             this.angle,
             this.playerNumber,
-            this.ricochet,
-            this.piercing
+            bulletProperties.ricochet,
+            bulletProperties.piercing
         );
         bullets.push(bullet);
 
@@ -417,6 +384,12 @@ class Tank {
 
         // Play sound effect
         playSound(shootSound);
+
+        // Create muzzle flash animation
+        const muzzleX = this.x + this.width / 2 + Math.cos(this.angle) * (this.width/2 + 5);
+        const muzzleY = this.y + this.height / 2 + Math.sin(this.angle) * (this.height/2 + 5);
+        
+        createMuzzleFlash(muzzleX, muzzleY, this.angle);
 
         // Start reload timer (immediate if rapid fire is active)
         if (this.rapidFire) {
@@ -438,41 +411,92 @@ class Tank {
         }
     }
     
-    shootSpread() {
+    shootSpread(props) {
         if (this.ammo <= 0 || !this.canShoot) return;
         
         // Create 3 bullets in a spread pattern
         const spreadAngle = Math.PI / 12; // 15 degrees
         
         // Left bullet
-        bullets.push(new Bullet(
-            this.x + this.width / 2 + Math.cos(this.angle - spreadAngle) * this.width,
-            this.y + this.height / 2 + Math.sin(this.angle - spreadAngle) * this.height,
-            this.angle - spreadAngle,
-            this.playerNumber,
-            this.ricochet,
-            this.piercing
-        ));
+        if (props.isHoming) {
+            const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
+            if (targetTank) {
+                bullets.push(new HomingMissile(
+                    this.x + this.width / 2 + Math.cos(this.angle - spreadAngle) * this.width,
+                    this.y + this.height / 2 + Math.sin(this.angle - spreadAngle) * this.height,
+                    this.angle - spreadAngle,
+                    this.playerNumber,
+                    targetTank,
+                    props.ricochet,
+                    props.piercing,
+                    props.isMega
+                ));
+            }
+        } else {
+            bullets.push(new Bullet(
+                this.x + this.width / 2 + Math.cos(this.angle - spreadAngle) * this.width,
+                this.y + this.height / 2 + Math.sin(this.angle - spreadAngle) * this.height,
+                this.angle - spreadAngle,
+                this.playerNumber,
+                props.ricochet,
+                props.piercing,
+                props.isMega
+            ));
+        }
         
         // Center bullet
-        bullets.push(new Bullet(
-            this.x + this.width / 2 + Math.cos(this.angle) * this.width,
-            this.y + this.height / 2 + Math.sin(this.angle) * this.height,
-            this.angle,
-            this.playerNumber,
-            this.ricochet,
-            this.piercing
-        ));
+        if (props.isHoming) {
+            const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
+            if (targetTank) {
+                bullets.push(new HomingMissile(
+                    this.x + this.width / 2 + Math.cos(this.angle) * this.width,
+                    this.y + this.height / 2 + Math.sin(this.angle) * this.height,
+                    this.angle,
+                    this.playerNumber,
+                    targetTank,
+                    props.ricochet,
+                    props.piercing,
+                    props.isMega
+                ));
+            }
+        } else {
+            bullets.push(new Bullet(
+                this.x + this.width / 2 + Math.cos(this.angle) * this.width,
+                this.y + this.height / 2 + Math.sin(this.angle) * this.height,
+                this.angle,
+                this.playerNumber,
+                props.ricochet,
+                props.piercing,
+                props.isMega
+            ));
+        }
         
         // Right bullet
-        bullets.push(new Bullet(
-            this.x + this.width / 2 + Math.cos(this.angle + spreadAngle) * this.width,
-            this.y + this.height / 2 + Math.sin(this.angle + spreadAngle) * this.height,
-            this.angle + spreadAngle,
-            this.playerNumber,
-            this.ricochet,
-            this.piercing
-        ));
+        if (props.isHoming) {
+            const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
+            if (targetTank) {
+                bullets.push(new HomingMissile(
+                    this.x + this.width / 2 + Math.cos(this.angle + spreadAngle) * this.width,
+                    this.y + this.height / 2 + Math.sin(this.angle + spreadAngle) * this.height,
+                    this.angle + spreadAngle,
+                    this.playerNumber,
+                    targetTank,
+                    props.ricochet,
+                    props.piercing,
+                    props.isMega
+                ));
+            }
+        } else {
+            bullets.push(new Bullet(
+                this.x + this.width / 2 + Math.cos(this.angle + spreadAngle) * this.width,
+                this.y + this.height / 2 + Math.sin(this.angle + spreadAngle) * this.height,
+                this.angle + spreadAngle,
+                this.playerNumber,
+                props.ricochet,
+                props.piercing,
+                props.isMega
+            ));
+        }
 
         // Update ammo and stats
         this.ammo--;
@@ -495,7 +519,7 @@ class Tank {
         }, this.reloadTime);
     }
     
-    shootMegaBullet() {
+    shootMegaBullet(props) {
         if (this.ammo <= 0 || !this.canShoot) return;
         
         // Create a mega bullet
@@ -504,8 +528,8 @@ class Tank {
             this.y + this.height / 2 + Math.sin(this.angle) * this.height,
             this.angle,
             this.playerNumber,
-            this.ricochet,
-            this.piercing,
+            props.ricochet,
+            props.piercing,
             true // is mega bullet
         );
         bullets.push(bullet);
@@ -519,8 +543,100 @@ class Tank {
             stats.p2ShotsFired++;
         }
 
-        // Play sound effect with more intensity
-        shootSound.volume = sfxVolume * 1.5;
+        // Play sound effect with more intensity but capped at 1.0 max volume
+        const boostedVolume = Math.min(1.0, sfxVolume * 1.5);
+        shootSound.volume = boostedVolume;
+        playSound(shootSound);
+        shootSound.volume = sfxVolume;
+
+        // Start reload timer
+        setTimeout(() => {
+            if (this.ammo < this.maxAmmo) {
+                this.ammo++;
+            }
+            this.canShoot = true;
+        }, this.reloadTime);
+    }
+
+    shootHomingMissile(props) {
+        if (this.ammo <= 0 || !this.canShoot) return;
+        
+        // Find the target tank (opponent)
+        const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
+        
+        if (!targetTank) return;
+        
+        // Create a homing missile with other properties
+        let homingMissile = new HomingMissile(
+            this.x + this.width / 2 + Math.cos(this.angle) * this.width,
+            this.y + this.height / 2 + Math.sin(this.angle) * this.height,
+            this.angle,
+            this.playerNumber,
+            targetTank,
+            props.ricochet,
+            props.piercing,
+            props.isMega
+        );
+        bullets.push(homingMissile);
+
+        // Update ammo and stats
+        this.ammo--;
+        this.canShoot = false;
+        if (this.playerNumber === 1) {
+            stats.p1ShotsFired++;
+        } else {
+            stats.p2ShotsFired++;
+        }
+
+        // Play sound effect with more intensity but capped at 1.0 max volume
+        const boostedVolume = Math.min(1.0, sfxVolume * 1.5);
+        shootSound.volume = boostedVolume;
+        playSound(shootSound);
+        shootSound.volume = sfxVolume;
+
+        // Start reload timer
+        setTimeout(() => {
+            if (this.ammo < this.maxAmmo) {
+                this.ammo++;
+            }
+            this.canShoot = true;
+        }, this.reloadTime);
+    }
+    
+    // New method for combined homing + mega bullets
+    shootHomingMegaBullet(props) {
+        if (this.ammo <= 0 || !this.canShoot) return;
+        
+        // Find the target tank (opponent)
+        const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
+        
+        if (!targetTank) return;
+        
+        // Create a homing mega missile
+        let homingMissile = new HomingMissile(
+            this.x + this.width / 2 + Math.cos(this.angle) * this.width,
+            this.y + this.height / 2 + Math.sin(this.angle) * this.height,
+            this.angle,
+            this.playerNumber,
+            targetTank,
+            props.ricochet,
+            props.piercing,
+            true // isMega = true
+        );
+        bullets.push(homingMissile);
+
+        // Update ammo and stats
+        this.ammo--;
+        this.canShoot = false;
+        if (this.playerNumber === 1) {
+            stats.p1ShotsFired++;
+        } else {
+            stats.p2ShotsFired++;
+        }
+
+        // Play sound effect with more intensity but capped at 1.0 max volume
+        const boostedVolume = Math.min(1.0, sfxVolume * 1.8);
+        shootSound.volume = boostedVolume;
         playSound(shootSound);
         shootSound.volume = sfxVolume;
 
@@ -554,14 +670,10 @@ class Tank {
             otherTank.empTimer = 3000; // 3 seconds
         }
         
-        // Visual effect
-        // Could add a flash or some visual indicator
-        
         // Play sound
         playSound(bounceSound);
     }
 
-    // The rest of the Tank methods remain largely the same
     checkCollision(x, y) {
         // Check collision with obstacles
         for (let obstacle of obstacles) {
@@ -593,7 +705,26 @@ class Tank {
         
         this.lives--;
         
+        // Create hit animation
+        createExplosionEffect(
+            this.x + this.width / 2,
+            this.y + this.height / 2,
+            this.width,
+            "#ff5500",
+            20,
+            false
+        );
+        
         if (this.lives <= 0) {
+            // Create larger death animation
+            createExplosionEffect(
+                this.x + this.width / 2,
+                this.y + this.height / 2, 
+                this.width * 2,
+                "#ff0000",
+                40,
+                true
+            );
             return true; // Tank is destroyed
         }
         
@@ -720,7 +851,7 @@ class Bullet {
         this.damage = isMega ? 2 : 1; // Mega bullets do double damage
     }
 
-    // The update and draw methods mostly stay the same, just adjusted for mega bullets
+    // ... Rest of Bullet class methods remain the same
     update(deltaTime) {
         // Calculate next position
         let newX = this.x + Math.cos(this.angle) * this.speed;
@@ -875,6 +1006,153 @@ class Bullet {
     }
 }
 
+// HomingMissile class
+class HomingMissile extends Bullet {
+    constructor(x, y, angle, owner, targetTank, ricochet = false, piercing = false, isMega = false) {
+        super(x, y, angle, owner, ricochet, piercing, isMega);
+        this.targetTank = targetTank;
+        this.speed = isMega ? 4 : 5; // Mega is even slower
+        this.turnSpeed = 0.03; // How quickly it can change direction
+        this.radius = isMega ? 10 : 6; // Size based on mega status
+        this.life = 6000; // Longer life time (6 seconds)
+        this.homingDelay = 500; // Start homing after 0.5 seconds
+        this.startTime = Date.now();
+        this.smokeTrail = [];
+        this.lastSmokeTime = 0;
+        this.damage = isMega ? 2 : 1; // Mega does double damage
+    }
+    
+    update(deltaTime) {
+        // Generate smoke trail
+        if (Date.now() - this.lastSmokeTime > 50) { // Every 50ms
+            this.smokeTrail.push({
+                x: this.x,
+                y: this.y,
+                radius: 3 + Math.random() * 2,
+                life: 1000, // 1 second life for smoke particles
+                opacity: 0.7
+            });
+            this.lastSmokeTime = Date.now();
+        }
+        
+        // Update smoke particles
+        for (let i = this.smokeTrail.length - 1; i >= 0; i--) {
+            this.smokeTrail[i].life -= deltaTime;
+            this.smokeTrail[i].opacity = Math.min(0.7, this.smokeTrail[i].life / 1000);
+            if (this.smokeTrail[i].life <= 0) {
+                this.smokeTrail.splice(i, 1);
+            }
+        }
+        
+        // Only start homing after delay
+        if (Date.now() - this.startTime > this.homingDelay && this.targetTank && !this.targetTank.respawning) {
+            // Calculate angle to target
+            const dx = (this.targetTank.x + this.targetTank.width/2) - this.x;
+            const dy = (this.targetTank.y + this.targetTank.height/2) - this.y;
+            let targetAngle = Math.atan2(dy, dx);
+            
+            // Normalize angles for comparison
+            let angleDiff = targetAngle - this.angle;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            
+            // Turn towards target with limited turn rate
+            if (Math.abs(angleDiff) > 0.01) {
+                if (angleDiff > 0) {
+                    this.angle += Math.min(this.turnSpeed, angleDiff);
+                } else {
+                    this.angle -= Math.min(this.turnSpeed, -angleDiff);
+                }
+            }
+        }
+        
+        // Rest of movement and collision logic similar to regular bullet
+        // But using the parent's update method
+        return super.update(deltaTime);
+    }
+    
+    draw() {
+        // Draw smoke trail
+        for (let smoke of this.smokeTrail) {
+            ctx.globalAlpha = smoke.opacity;
+            ctx.beginPath();
+            ctx.arc(smoke.x, smoke.y, smoke.radius, 0, Math.PI * 2);
+            ctx.fillStyle = "#888888";
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        
+        // Draw the missile
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        
+        // Choose color based on properties
+        if (this.isMega && this.piercing && this.ricochet) {
+            ctx.fillStyle = "#ff00ff"; // Magenta for the ultimate missile
+        } else if (this.isMega && this.piercing) {
+            ctx.fillStyle = "#8b00ff"; // Violet for mega piercing
+        } else if (this.isMega && this.ricochet) {
+            ctx.fillStyle = "#ff8c00"; // Dark orange for mega ricochet
+        } else if (this.piercing && this.ricochet) {
+            ctx.fillStyle = "#9400d3"; // Dark violet for piercing ricochet
+        } else if (this.isMega) {
+            ctx.fillStyle = "#ff0000"; // Red for mega
+        } else if (this.piercing) {
+            ctx.fillStyle = "#9b59b6"; // Purple for piercing
+        } else if (this.ricochet) {
+            ctx.fillStyle = "#e67e22"; // Orange for ricochet
+        } else {
+            ctx.fillStyle = "#ff4500"; // Orange-red default
+        }
+        
+        ctx.fill();
+        
+        // Draw missile trail (flames)
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        
+        // Longer trail for mega bullets
+        const trailLength = this.isMega ? 20 : 15;
+        
+        ctx.lineTo(
+            this.x - Math.cos(this.angle) * trailLength,
+            this.y - Math.sin(this.angle) * trailLength
+        );
+        
+        // Trail color based on properties
+        if (this.isMega) {
+            ctx.strokeStyle = "rgba(255, 69, 0, 0.7)";
+            ctx.lineWidth = 5;
+        } else {
+            ctx.strokeStyle = "rgba(255, 165, 0, 0.7)";
+            ctx.lineWidth = 4;
+        }
+        ctx.stroke();
+        
+        // Draw missile body
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.fillStyle = this.isMega ? "#d63031" : "#e84118";
+        const bodyWidth = this.isMega ? this.radius*2.5 : this.radius*2;
+        ctx.fillRect(-this.radius, -this.radius/2, bodyWidth, this.radius);
+        
+        // Add visual indicators for special properties
+        if (this.ricochet) {
+            ctx.fillStyle = "#e67e22";
+            ctx.fillRect(-this.radius, -this.radius/2 - 2, 5, 2);
+            ctx.fillRect(-this.radius, this.radius/2, 5, 2);
+        }
+        
+        if (this.piercing) {
+            ctx.fillStyle = "#9b59b6";
+            ctx.fillRect(-this.radius + 7, -this.radius/2 - 2, 2, this.radius + 4);
+        }
+        
+        ctx.restore();
+    }
+}
+
 // Obstacle class
 class Obstacle {
     constructor(x, y, width, height) {
@@ -925,47 +1203,24 @@ class PowerUp {
         }
 
         // Check collision with tanks
-        for (let i = 0; i < tanks.length; i++) {
-            const tank = tanks[i];
-            const tankIndex = i;
-            
+        for (let tank of tanks) {
             if (!tank.respawning && !this.collected && 
                 this.x < tank.x + tank.width &&
                 this.x + this.width > tank.x &&
                 this.y < tank.y + tank.height &&
                 this.y + this.height > tank.y) {
                 
-                // Only handle collection if this is our tank in online mode,
-                // or any tank in local mode
-                if (!onlineMode || (tankIndex === localPlayerNumber - 1)) {
-                    this.collected = true;
-                    
-                    // In online mode, notify server
-                    if (onlineMode && networkManager) {
-                        // Find this powerup's index
-                        const powerUpIndex = powerUps.indexOf(this);
-                        if (powerUpIndex !== -1) {
-                            networkManager.send({
-                                type: 'collect_powerup',
-                                gameId: networkManager.gameId,
-                                playerIndex: tankIndex,
-                                powerUpIndex: powerUpIndex
-                            });
-                        }
-                    } else {
-                        // In offline mode, apply immediately
-                        this.applyPowerUp(tank);
-                        
-                        // Update stats
-                        if (tank.playerNumber === 1) {
-                            stats.p1PowerupsCollected++;
-                        } else {
-                            stats.p2PowerupsCollected++;
-                        }
-                    }
-                    
-                    return true; // Remove power-up
+                this.collected = true;
+                this.applyPowerUp(tank);
+                
+                // Update stats
+                if (tank.playerNumber === 1) {
+                    stats.p1PowerupsCollected++;
+                } else {
+                    stats.p2PowerupsCollected++;
                 }
+                
+                return true; // Remove power-up
             }
         }
         
@@ -1020,9 +1275,12 @@ class PowerUp {
                 tank.empBlast();
                 break;
             case POWER_UP_TYPES.EXTRA_LIFE:
-                if (tank.lives < tank.maxLives) {
+                
                     tank.lives++;
-                }
+                
+                break;
+            case POWER_UP_TYPES.HOMING_MISSILE:
+                tank.homingMissile = true;
                 break;
         }
     }
@@ -1039,145 +1297,214 @@ class PowerUp {
         ctx.fillStyle = this.getColor();
         ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
         
-        // Draw icon based on power-up type
+        // Draw icon based on power-up type - update to match the tank status UI icons
         ctx.fillStyle = "white";
         ctx.strokeStyle = "white";
         ctx.lineWidth = 2;
         
         switch(this.type) {
             case POWER_UP_TYPES.SHIELD:
-                // Shield icon
+                // Shield icon - circle
                 ctx.beginPath();
                 ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.RICOCHET:
-                // Ricochet icon (X shape)
+                // Ricochet icon - X with square
                 ctx.beginPath();
-                ctx.moveTo(-5, -5);
-                ctx.lineTo(5, 5);
-                ctx.moveTo(-5, 5);
-                ctx.lineTo(5, -5);
+                ctx.rect(-this.width/5, -this.width/5, this.width/2.5, this.width/2.5);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(-this.width/8, -this.width/8);
+                ctx.lineTo(this.width/8, this.width/8);
+                ctx.moveTo(-this.width/8, this.width/8);
+                ctx.lineTo(this.width/8, -this.width/8);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.PIERCING:
-                // Piercing icon (vertical line)
-                ctx.beginPath();
-                ctx.moveTo(0, -8);
-                ctx.lineTo(0, 8);
+                // Piercing icon - vertical line
                 ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(0, -this.width/3);
+                ctx.lineTo(0, this.width/3);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.SPEED_BOOST:
-                // Speed boost icon (horizontal arrows)
+                // Speed boost icon - horizontal arrow
                 ctx.beginPath();
-                ctx.moveTo(-8, 0);
-                ctx.lineTo(8, 0);
-                ctx.moveTo(5, -3);
-                ctx.lineTo(8, 0);
-                ctx.lineTo(5, 3);
+                ctx.moveTo(-this.width/3, 0);
+                ctx.lineTo(this.width/3, 0);
+                ctx.moveTo(this.width/4, -this.width/8);
+                ctx.lineTo(this.width/3, 0);
+                ctx.lineTo(this.width/4, this.width/8);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.RAPID_FIRE:
-                // Rapid fire icon (three dots)
+                // Rapid fire icon - three dots
                 ctx.beginPath();
-                ctx.arc(-5, 0, 2, 0, Math.PI * 2);
-                ctx.arc(0, 0, 2, 0, Math.PI * 2);
-                ctx.arc(5, 0, 2, 0, Math.PI * 2);
+                ctx.arc(-this.width/8, 0, this.width/12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(0, 0, this.width/12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(this.width/8, 0, this.width/12, 0, Math.PI * 2);
                 ctx.fill();
                 break;
                 
             case POWER_UP_TYPES.MINE_LAYER:
-                // Mine layer icon (circle with cross)
+                // Mine layer icon - circle with cross
                 ctx.beginPath();
-                ctx.arc(0, 0, 6, 0, Math.PI * 2);
-                ctx.moveTo(-4, 0);
-                ctx.lineTo(4, 0);
-                ctx.moveTo(0, -4);
-                ctx.lineTo(0, 4);
+                ctx.arc(0, 0, this.width/5, 0, Math.PI * 2);
+                ctx.moveTo(-this.width/8, 0);
+                ctx.lineTo(this.width/8, 0);
+                ctx.moveTo(0, -this.width/8);
+                ctx.lineTo(0, this.width/8);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.SPREAD_SHOT:
-                // Spread shot icon (three lines diverging)
+                // Spread shot icon - three diverging lines
                 ctx.beginPath();
-                ctx.moveTo(0, -6);
-                ctx.lineTo(0, -1);
-                ctx.moveTo(0, -4);
-                ctx.lineTo(-5, -10);
-                ctx.moveTo(0, -4);
-                ctx.lineTo(5, -10);
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, -this.width/4);
+                ctx.moveTo(0, -this.width/8);
+                ctx.lineTo(-this.width/6, -this.width/3);
+                ctx.moveTo(0, -this.width/8);
+                ctx.lineTo(this.width/6, -this.width/3);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.MAGNETIC_SHIELD:
-                // Magnetic shield icon (wavy circle)
+                // Magnetic shield icon - wavy circle with magnet
                 ctx.beginPath();
-                for (let i = 0; i < 16; i++) {
-                    const angle = (i / 16) * Math.PI * 2;
-                    const radius = i % 2 === 0 ? 7 : 5;
-                    if (i === 0) {
-                        ctx.moveTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
-                    } else {
-                        ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
-                    }
-                }
-                ctx.closePath();
+                ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // Add magnet symbol
+                ctx.beginPath();
+                ctx.rect(-this.width/12, -this.width/6, this.width/6, this.width/12);
+                ctx.moveTo(-this.width/12, -this.width/6);
+                ctx.lineTo(-this.width/12, -this.width/12);
+                ctx.moveTo(this.width/12, -this.width/6);
+                ctx.lineTo(this.width/12, -this.width/12);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.INVISIBILITY:
-                // Invisibility icon (eye with slash)
+                // Invisibility icon - dotted square
+                ctx.setLineDash([2, 2]);
                 ctx.beginPath();
-                ctx.arc(0, 0, 5, 0, Math.PI * 2);
-                ctx.moveTo(-8, -8);
-                ctx.lineTo(8, 8);
+                ctx.rect(-this.width/4, -this.width/4, this.width/2, this.width/2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Add crossed-out eye
+                ctx.beginPath();
+                ctx.arc(0, 0, this.width/10, 0, Math.PI * 2);
+                ctx.moveTo(-this.width/6, -this.width/6);
+                ctx.lineTo(this.width/6, this.width/6);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.MEGA_BULLET:
-                // Mega bullet icon (large dot)
+                // Mega bullet icon - large filled dot
                 ctx.beginPath();
-                ctx.arc(0, 0, 7, 0, Math.PI * 2);
+                ctx.arc(0, 0, this.width/5, 0, Math.PI * 2);
                 ctx.fill();
+                
+                // Add outer circle
+                ctx.beginPath();
+                ctx.arc(0, 0, this.width/3.5, 0, Math.PI * 2);
+                ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.TELEPORT:
-                // Teleport icon (lightning bolt)
+                // Teleport icon - two dots with curved arrow
                 ctx.beginPath();
-                ctx.moveTo(-2, -8);
-                ctx.lineTo(2, -3);
-                ctx.lineTo(-2, 2);
-                ctx.lineTo(2, 8);
+                ctx.arc(-this.width/5, -this.width/5, this.width/12, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(this.width/5, this.width/5, this.width/12, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw curved arrow
+                ctx.beginPath();
+                ctx.arc(0, 0, this.width/4, 0.8, 3.8, false);
+                ctx.stroke();
+                
+                // Arrow head
+                ctx.beginPath();
+                ctx.moveTo(this.width/5 - this.width/15, this.width/5 - this.width/15);
+                ctx.lineTo(this.width/5, this.width/5);
+                ctx.lineTo(this.width/5 + this.width/15, this.width/5 - this.width/15);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.EMP_BLAST:
-                // EMP icon (electricity symbol)
+                // EMP icon - electricity symbol
                 ctx.beginPath();
-                for (let i = 0; i < 3; i++) {
-                    const angle = (i / 3) * Math.PI * 2;
-                    const x1 = Math.cos(angle) * 6;
-                    const y1 = Math.sin(angle) * 6;
-                    ctx.moveTo(0, 0);
-                    ctx.lineTo(x1, y1);
-                }
+                ctx.arc(0, 0, this.width/4, 0, Math.PI * 2, false);
+                ctx.stroke();
+                
+                // Lightning
+                ctx.beginPath();
+                ctx.moveTo(-this.width/8, -this.width/4);
+                ctx.lineTo(0, 0);
+                ctx.lineTo(-this.width/8, this.width/4);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(this.width/8, -this.width/4);
+                ctx.lineTo(0, 0);
+                ctx.lineTo(this.width/8, this.width/4);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.EXTRA_LIFE:
-                // Extra life icon (plus sign)
+                // Extra life icon - plus sign in circle
                 ctx.beginPath();
-                ctx.moveTo(-6, 0);
-                ctx.lineTo(6, 0);
-                ctx.moveTo(0, -6);
-                ctx.lineTo(0, 6);
+                ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(-this.width/8, 0);
+                ctx.lineTo(this.width/8, 0);
+                ctx.moveTo(0, -this.width/8);
+                ctx.lineTo(0, this.width/8);
                 ctx.lineWidth = 2;
                 ctx.stroke();
+                break;
+                
+            case POWER_UP_TYPES.HOMING_MISSILE:
+                // Homing missile icon - target with missile
+                ctx.beginPath();
+                ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, this.width/8, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // Missile
+                ctx.beginPath();
+                ctx.moveTo(-this.width/4, -this.width/4);
+                ctx.lineTo(-this.width/12, -this.width/12);
+                ctx.stroke();
+                
+                // Draw small triangle for missile head
+                ctx.beginPath();
+                ctx.moveTo(-this.width/4 - 2, -this.width/4 - 2);
+                ctx.lineTo(-this.width/4 + 4, -this.width/4);
+                ctx.lineTo(-this.width/4, -this.width/4 + 4);
+                ctx.closePath();
+                ctx.fill();
                 break;
         }
         
@@ -1212,6 +1539,8 @@ class PowerUp {
                 return "rgba(255, 255, 0, 0.8)"; // Yellow
             case POWER_UP_TYPES.EXTRA_LIFE: 
                 return "rgba(50, 205, 50, 0.8)"; // Lime green
+            case POWER_UP_TYPES.HOMING_MISSILE:
+                return "rgba(255, 69, 0, 0.8)"; // Orange-red
             default: 
                 return "rgba(200, 200, 200, 0.8)"; // Default gray
         }
@@ -1288,7 +1617,12 @@ function isValidPosition(x, y, width, height, buffer) {
 function playSound(sound) {
     if (!sound) return;
     
-    sound.volume = sound === backgroundMusic ? musicVolume : sfxVolume;
+    // Ensure volume is within [0,1] range
+    const safeVolume = sound === backgroundMusic ? 
+        Math.min(1.0, Math.max(0, musicVolume)) : 
+        Math.min(1.0, Math.max(0, sfxVolume));
+    
+    sound.volume = safeVolume;
     
     // Reset and play
     sound.currentTime = 0;
@@ -1342,121 +1676,33 @@ function createObstacles() {
     }
 }
 
-// Add function to generate obstacles based on seed
-function createObstaclesWithSeed(seed) {
-    obstacles = [];
-    
-    // Create a pseudo-random number generator with the seed
-    const seededRandom = function() {
-        seed = (seed * 9301 + 49297) % 233280;
-        return seed / 233280;
-    };
-    
-    // Create border walls
-    obstacles.push(new Obstacle(0, 0, TILE_SIZE, canvas.height)); // Left wall
-    obstacles.push(new Obstacle(0, 0, canvas.width, TILE_SIZE)); // Top wall
-    obstacles.push(new Obstacle(canvas.width - TILE_SIZE, 0, TILE_SIZE, canvas.height)); // Right wall
-    obstacles.push(new Obstacle(0, canvas.height - TILE_SIZE, canvas.width, TILE_SIZE)); // Bottom wall
-    
-    // Create random obstacles using the seeded random function
-    const numObstacles = 15 + Math.floor(seededRandom() * 10); // Between 15 and 25 obstacles
-    
-    for (let i = 0; i < numObstacles; i++) {
-        // Decide on a size
-        const width = TILE_SIZE * (1 + Math.floor(seededRandom() * 2));
-        const height = TILE_SIZE * (1 + Math.floor(seededRandom() * 2));
-        
-        // Find a valid position
-        let x, y, validPosition = false;
-        
-        for (let attempts = 0; attempts < 50 && !validPosition; attempts++) {
-            x = TILE_SIZE + Math.floor(seededRandom() * (GRID_COLS - 3)) * TILE_SIZE;
-            y = TILE_SIZE + Math.floor(seededRandom() * (GRID_ROWS - 3)) * TILE_SIZE;
-            
-            validPosition = true;
-            
-            // Avoid placing obstacles too close to each other
-            for (let obstacle of obstacles) {
-                if (x < obstacle.x + obstacle.width + TILE_SIZE &&
-                    x + width + TILE_SIZE > obstacle.x &&
-                    y < obstacle.y + obstacle.height + TILE_SIZE &&
-                    y + height + TILE_SIZE > obstacle.y) {
-                    validPosition = false;
-                    break;
-                }
-            }
-        }
-        
-        if (validPosition) {
-            obstacles.push(new Obstacle(x, y, width, height));
-        }
-    }
-    
-    return obstacles;
-}
-
 // Game initialization
-function initGame(isOnlineMode = false, playerNum = 0, mapSeed = null, initialTankPositions = null) {
-    console.log(`Initializing game: online=${isOnlineMode}, player=${playerNum}, seed=${mapSeed}`);
-    onlineMode = isOnlineMode;
-    localPlayerNumber = playerNum;
-    networkReady = networkManager && networkManager.networkReady;
-    
-    // Create obstacles - use seed if provided (online mode)
-    if (mapSeed !== null) {
-        obstacles = createObstaclesWithSeed(mapSeed);
-        
-        // In online mode, send obstacle data to server if we're player 1
-        if (onlineMode && networkManager && playerNum === 1) {
-            // Small delay to ensure connection is established
-            setTimeout(() => {
-                networkManager.sendMapData(
-                    obstacles.map(o => ({
-                        x: o.x, 
-                        y: o.y, 
-                        width: o.width, 
-                        height: o.height
-                    })),
-                    mapSeed
-                );
-            }, 500);
-        }
-    } else {
-        // Regular obstacle creation for local games
-        createObstacles();
-    }
+function initGame() {
+    createObstacles();
     
     let p1Spawn, p2Spawn;
     
-    if (initialTankPositions) {
-        // Use server-provided positions
-        console.log('Using server-provided tank positions');
-        p1Spawn = initialTankPositions.find(t => t.playerNumber === 1);
-        p2Spawn = initialTankPositions.find(t => t.playerNumber === 2);
-    } else {
-        // Generate random spawn points with minimum distance
-        console.log('Generating random tank positions');
-        const minDistance = 300;
-        let attempts = 0;
-        const maxAttempts = 50;
+    // Generate random spawn points with minimum distance
+    const minDistance = 300;
+    let attempts = 0;
+    const maxAttempts = 50;
+    
+    do {
+        p1Spawn = getRandomSpawnPoint();
+        p2Spawn = getRandomSpawnPoint();
         
-        do {
-            p1Spawn = getRandomSpawnPoint();
-            p2Spawn = getRandomSpawnPoint();
-            
-            const dx = p1Spawn.x - p2Spawn.x;
-            const dy = p1Spawn.y - p2Spawn.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            attempts++;
-            
-            if (distance >= minDistance || attempts >= maxAttempts) break;
-        } while (true);
+        const dx = p1Spawn.x - p2Spawn.x;
+        const dy = p1Spawn.y - p2Spawn.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
         
-        // Default angles
-        p1Spawn.angle = 0;
-        p2Spawn.angle = Math.PI;
-    }
+        attempts++;
+        
+        if (distance >= minDistance || attempts >= maxAttempts) break;
+    } while (true);
+    
+    // Default angles
+    p1Spawn.angle = 0;
+    p2Spawn.angle = Math.PI;
     
     // Create tanks
     tanks = [
@@ -1477,32 +1723,6 @@ function initGame(isOnlineMode = false, playerNum = 0, mapSeed = null, initialTa
         }, 2)
     ];
     
-    // Set initial angles from server data if available
-    if (p1Spawn.angle !== undefined) tanks[0].angle = p1Spawn.angle;
-    if (p2Spawn.angle !== undefined) tanks[1].angle = p2Spawn.angle;
-    
-    // If online mode, modify controls based on player number
-    if (onlineMode) {
-        console.log(`Setting up as player ${playerNum}`);
-        if (playerNum === 1) {
-            // Player 1 controls the blue tank (tanks[0])
-            tanks[1].controls = {}; // Remove controls from opponent's tank
-        } else {
-            // Player 2 controls the red tank (tanks[1])
-            tanks[0].controls = {}; // Remove controls from opponent's tank
-        }
-        
-        // Add target properties for smooth interpolation
-        tanks.forEach(tank => {
-            tank.targetX = tank.x;
-            tank.targetY = tank.y;
-            tank.targetAngle = tank.angle;
-        });
-        
-        // Setup network event listeners
-        setupNetworkHandlers();
-    }
-    
     // Reset game state and stats
     bullets = [];
     powerUps = [];
@@ -1520,353 +1740,6 @@ function initGame(isOnlineMode = false, playerNum = 0, mapSeed = null, initialTa
     
     // Spawn initial power-up
     spawnPowerUp();
-}
-
-// Function to handle initialization using server data
-function initializeFromServerState(gameState) {
-    if (!gameState) return;
-    
-    console.log('Initializing game from server state');
-    
-    // Update tank positions from server
-    gameState.tanks.forEach((tankState, index) => {
-        if (tanks[index]) {
-            tanks[index].x = tankState.x;
-            tanks[index].y = tankState.y;
-            tanks[index].angle = tankState.angle;
-            tanks[index].lives = tankState.lives;
-            
-            // Also update target positions for interpolation
-            tanks[index].targetX = tankState.x;
-            tanks[index].targetY = tankState.y;
-            tanks[index].targetAngle = tankState.angle;
-        }
-    });
-    
-    // Verify sync with server
-    verifyGameSync();
-}
-
-// Function to verify game synchronization with server
-function verifyGameSync() {
-    if (!networkManager) return;
-    
-    const syncData = {
-        tankPositions: tanks.map(tank => ({
-            x: tank.x,
-            y: tank.y,
-            angle: tank.angle
-        }))
-    };
-    
-    networkManager.verifyGameSync(syncData);
-}
-
-// Update setupNetworkHandlers function
-function setupNetworkHandlers() {
-    if (!networkManager) return;
-    
-    // Listen for initial game state from server
-    networkManager.on('onInitialGameState', (gameState) => {
-        initializeFromServerState(gameState);
-    });
-    
-    // Listen for opponent inputs with improved handling
-    networkManager.on('onOpponentInput', (data) => {
-        if (!data || !data.input) {
-            console.warn('Received invalid opponent input data');
-            return;
-        }
-        
-        const opponentTankIndex = data.playerNumber === 1 ? 0 : 1;
-        const myTankIndex = localPlayerNumber - 1;
-        const tank = tanks[opponentTankIndex];
-        
-        // Safety check
-        if (!tank) {
-            console.error('Tank not found for opponent input:', data);
-            return;
-        }
-        
-        // Don't apply inputs to my own tank
-        if (opponentTankIndex === myTankIndex) {
-            console.warn('Received input for my own tank - ignoring');
-            return;
-        }
-        
-        // Apply opponent input
-        const input = data.input;
-        
-        // Update movement
-        if ('moving' in input) {
-            tank.moving = input.moving;
-        }
-        
-        // Update shooting
-        if ('shooting' in input) {
-            tank.shooting = input.shooting;
-        }
-        
-        // Handle position correction from server (more authoritative)
-        if (input.serverPosition) {
-            tank.targetX = input.serverPosition.x;
-            tank.targetY = input.serverPosition.y;
-            tank.targetAngle = input.serverPosition.angle;
-        }
-        // Client position as fallback
-        else if (input.position) {
-            tank.targetX = input.position.x;
-            tank.targetY = input.position.y;
-        }
-        
-        // Handle angle correction
-        if ('angle' in input) {
-            tank.targetAngle = input.angle;
-        }
-    });
-    
-    // Handle map synchronization data from server
-    networkManager.on('onMapSync', (data) => {
-        if (!data.obstacles || !Array.isArray(data.obstacles)) return;
-        
-        console.log('Received map data from server');
-        
-        // Replace obstacles with server data
-        obstacles = data.obstacles.map(o => new Obstacle(o.x, o.y, o.width, o.height));
-    });
-    
-    // Handle power-up spawn events from server
-    networkManager.on('onPowerUpSpawn', (data) => {
-        if (!data.powerUp) return;
-        
-        console.log('Received power-up data from server:', data.powerUp);
-        
-        // Add the power-up to the game
-        const powerUp = new PowerUp(
-            data.powerUp.x, 
-            data.powerUp.y, 
-            data.powerUp.type
-        );
-        powerUps.push(powerUp);
-    });
-    
-    // Handle opponent disconnection
-    networkManager.on('onOpponentDisconnected', () => {
-        if (gameState.active) {
-            // Auto-win when opponent disconnects
-            gameState.over = true;
-            showGameOverScreen(localPlayerNumber);
-            winnerText.textContent = "Opponent Disconnected - You Win!";
-        }
-    });
-}
-
-// Add a function to set up network map listeners
-function setupNetworkMapListeners() {
-    if (!networkManager) return;
-    
-    // Handle map synchronization data from server
-    networkManager.on('onMapSync', (data) => {
-        if (!data.obstacles || !Array.isArray(data.obstacles)) return;
-        
-        console.log('Received map data from server');
-        
-        // Replace obstacles with server data
-        obstacles = data.obstacles.map(o => new Obstacle(o.x, o.y, o.width, o.height));
-    });
-    
-    // Handle power-up spawn events from server
-    networkManager.on('onPowerUpSpawn', (data) => {
-        if (!data.powerUp) return;
-        
-        console.log('Received power-up data from server:', data.powerUp);
-        
-        // Add the power-up to the game
-        const powerUp = new PowerUp(
-            data.powerUp.x, 
-            data.powerUp.y, 
-            data.powerUp.type
-        );
-        powerUps.push(powerUp);
-    });
-}
-
-// Add a function to properly clean up the game state
-function resetGameState() {
-    // Stop all active timers and animations if any exist
-    // (Add specific timer cleanup if you have any)
-    
-    // Clear all game entities
-    bullets = [];
-    powerUps = [];
-    mines = [];
-    
-    // Reset game flags
-    gameState.active = false;
-    gameState.over = false;
-    gameState.countdown = false;
-    
-    // Clear statistics
-    stats = {
-        p1ShotsFired: 0,
-        p2ShotsFired: 0,
-        p1PowerupsCollected: 0,
-        p2PowerupsCollected: 0
-    };
-    
-    // Create fresh game
-    initGame();
-    
-    console.log("Game state reset successfully");
-}
-
-// Add this new function for online mode inputs
-function setupNetworkInputHandlers() {
-    // Listen for opponent inputs
-    networkManager.on('onOpponentInput', (data) => {
-        if (!data || !data.input) {
-            console.warn('Received invalid opponent input data');
-            return;
-        }
-        
-        const opponentTankIndex = localPlayerNumber === 1 ? 1 : 0;
-        const tank = tanks[opponentTankIndex];
-        
-        // Apply opponent input
-        if (tank && data.input) {
-            const input = data.input;
-            
-            // Update movement
-            if ('moving' in input) {
-                tank.moving = input.moving;
-            }
-            
-            // Update shooting
-            if ('shooting' in input) {
-                tank.shooting = input.shooting;
-            }
-            
-            // Handle position correction if provided
-            if ('position' in input && input.position) {
-                tank.targetX = input.position.x;
-                tank.targetY = input.position.y;
-            }
-            
-            // Handle angle correction
-            if ('angle' in input) {
-                tank.targetAngle = input.angle;
-            }
-        }
-    });
-    
-    // Handle full state sync from opponent
-    networkManager.on('onOpponentStateSync', (data) => {
-        if (!data || !data.tankState) {
-            console.warn('Received invalid opponent state data');
-            return;
-        }
-        
-        const opponentTankIndex = localPlayerNumber === 1 ? 1 : 0;
-        const tank = tanks[opponentTankIndex];
-        
-        if (tank && data.tankState) {
-            // Apply full tank state
-            remoteTankState = data.tankState;
-            
-            // Set position and angle target for interpolation
-            tank.targetX = remoteTankState.x;
-            tank.targetY = remoteTankState.y;
-            tank.targetAngle = remoteTankState.angle;
-            
-            // Direct state updates (no interpolation needed)
-            tank.lives = remoteTankState.lives;
-            tank.ammo = remoteTankState.ammo;
-            tank.shield = remoteTankState.shield;
-            tank.shieldTimer = remoteTankState.shieldTimer;
-            tank.ricochet = remoteTankState.ricochet;
-            tank.piercing = remoteTankState.piercing;
-            tank.respawning = remoteTankState.respawning;
-            
-            // Update other power-up states
-            Object.keys(remoteTankState).forEach(key => {
-                if (key.endsWith('Timer') || key === 'moving' || key === 'shooting') {
-                    tank[key] = remoteTankState[key];
-                }
-            });
-        }
-    });
-    
-    // Handle opponent disconnection
-    networkManager.on('onOpponentDisconnected', () => {
-        if (gameState.active) {
-            // Auto-win when opponent disconnects
-            gameState.over = true;
-            showGameOverScreen(localPlayerNumber);
-            winnerText.textContent = "Opponent Disconnected - You Win!";
-        }
-    });
-}
-
-// A utility function for dejittering opponent movement
-function smoothPosition(current, target, factor) {
-    return current + (target - current) * factor;
-}
-
-// Modify the Tank update method to handle network interpolation better
-// Inside the Tank class, update method - adjust how we handle targetX/Y:
-Tank.prototype.smoothUpdate = function(deltaTime) {
-    // If we have target position/angle for network interpolation
-    if (onlineMode && this.targetX !== undefined && this.targetY !== undefined) {
-        const distX = Math.abs(this.targetX - this.x);
-        const distY = Math.abs(this.targetY - this.y);
-        
-        // Use different interpolation factors based on distance
-        let factor = interpolationFactor;
-        if (distX > 10 || distY > 10) {
-            // If far away, move faster to catch up
-            factor = 0.3;
-        }
-        
-        // Smoothly move to target position
-        this.x = smoothPosition(this.x, this.targetX, factor);
-        this.y = smoothPosition(this.y, this.targetY, factor);
-        
-        // If we're very close to target, snap to it to avoid jitter
-        if (distX < 0.5) this.x = this.targetX;
-        if (distY < 0.5) this.y = this.targetY;
-    }
-    
-    // Similar improvements for angle interpolation
-    if (onlineMode && this.targetAngle !== undefined) {
-        // Find shortest path to target angle
-        let angleDiff = this.targetAngle - this.angle;
-        
-        // Normalize the angle difference to [-PI, PI]
-        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        
-        this.angle += angleDiff * interpolationFactor;
-        
-        // Snap if very close
-        if (Math.abs(angleDiff) < 0.05) this.angle = this.targetAngle;
-    }
-    
-    /* ...rest of the update method... */
-};
-
-// Modify handleGameFound in the online UI module to pass the map seed
-function handleGameFound(gameData) {
-    /* ...existing code... */
-    
-    // Initialize game in online mode with the map seed
-    if (typeof initGame === 'function') {
-        initGame(true, gameData.playerNumber, gameData.mapSeed);
-    } else {
-        console.error('initGame function not found!');
-        return;
-    }
-    
-    /* ...rest of the function... */
 }
 
 function spawnPowerUp() {
@@ -1889,7 +1762,7 @@ function spawnPowerUp() {
     
     // If we found a valid spot, create the power-up
     if (validSpot) {
-        // Filter out problematic power-up types (MEGA_BULLET)
+        // Include HOMING_MISSILE in the valid types
         const validTypes = Object.values(POWER_UP_TYPES).filter(type => 
             type !== POWER_UP_TYPES.MEGA_BULLET
         );
@@ -1907,78 +1780,6 @@ function spawnPowerUp() {
 
 // Game loop
 let lastTime = 0;
-
-const originalGameLoop = gameLoop; // This line might cause issues if gameLoop hasn't been defined yet
-gameLoop = function(timestamp) {
-    // Call the original game loop
-    originalGameLoop(timestamp);
-    
-    // Handle network syncing
-    if (onlineMode && networkReady && gameState.active) {
-        const now = Date.now();
-        
-        // Process and send any accumulated inputs
-        if (inputBuffer.length > 0 && now - lastSyncTime > SYNC_INTERVAL) {
-            // Take latest input for sending
-            const latestInput = inputBuffer[inputBuffer.length - 1];
-            
-            // Send this input to the server
-            networkManager.sendGameInput({
-                moving: latestInput.tank.moving,
-                shooting: latestInput.tank.shooting,
-                position: {
-                    x: latestInput.tank.x,
-                    y: latestInput.tank.y
-                },
-                angle: latestInput.tank.angle
-            });
-            
-            // Clear input buffer after sending
-            inputBuffer = [];
-            
-            // Update last sync time
-            lastSyncTime = now;
-        }
-        
-        // Full state sync periodically
-        if (now - lastFullSyncTime > FULL_SYNC_INTERVAL) {
-            // Get the local tank
-            const myTankIndex = localPlayerNumber - 1;
-            const myTank = tanks[myTankIndex];
-            
-            if (myTank) {
-                // Create a comprehensive state object
-                const tankState = {
-                    x: myTank.x,
-                    y: myTank.y,
-                    angle: myTank.angle,
-                    lives: myTank.lives,
-                    ammo: myTank.ammo,
-                    moving: myTank.moving,
-                    shooting: myTank.shooting,
-                    shield: myTank.shield,
-                    shieldTimer: myTank.shieldTimer,
-                    ricochet: myTank.ricochet,
-                    ricochetTimer: myTank.ricochetTimer,
-                    piercing: myTank.piercing,
-                    piercingTimer: myTank.piercingTimer,
-                    respawning: myTank.respawning
-                };
-                
-                // Add any active power-ups
-                if (myTank.speedBoost) tankState.speedBoost = myTank.speedBoost;
-                if (myTank.rapidFire) tankState.rapidFire = myTank.rapidFire;
-                if (myTank.invisibility) tankState.invisibility = myTank.invisibility;
-                
-                // Send full state update
-                networkManager.syncTankState(tankState);
-                
-                // Update timestamp
-                lastFullSyncTime = now;
-            }
-        }
-    }
-};
 
 function gameLoop(timestamp) {
     // Calculate delta time
@@ -2030,6 +1831,33 @@ function gameLoop(timestamp) {
         } else {
             powerUps[i].draw();
         }
+    }
+    
+    // Draw explosion particles
+    if (window.explosionParticles) {
+        for (let i = window.explosionParticles.length - 1; i >= 0; i--) {
+            const particle = window.explosionParticles[i];
+            
+            // Update position
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            
+            // Update life
+            particle.life -= deltaTime;
+            
+            // Draw particle
+            ctx.globalAlpha = Math.min(1, particle.life / 500);
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+            ctx.fillStyle = particle.color;
+            ctx.fill();
+            
+            // Remove if expired
+            if (particle.life <= 0) {
+                window.explosionParticles.splice(i, 1);
+            }
+        }
+        ctx.globalAlpha = 1;
     }
     
     // Update and draw mines
@@ -2085,6 +1913,16 @@ function gameLoop(timestamp) {
                     showGameOverScreen(tank.playerNumber === 1 ? 2 : 1);
                 }
                 
+                // Create mine explosion
+                createExplosionEffect(
+                    mine.x,
+                    mine.y,
+                    mine.radius * 5, // Larger radius for mine explosion
+                    "#ff3300",
+                    30,
+                    true
+                );
+                
                 // Remove mine
                 mines.splice(i, 1);
                 
@@ -2098,6 +1936,147 @@ function gameLoop(timestamp) {
     
     // Check for tank collisions with bullets
     checkBulletCollisions();
+    
+    // Update tank status UI
+    if (window.tankStatusUI) {
+        if (tanks[0]) window.tankStatusUI.updateTankStatus(tanks[0], 1);
+        if (tanks[1]) window.tankStatusUI.updateTankStatus(tanks[1], 2);
+    }
+    
+    // Draw muzzle flashes
+    if (window.muzzleFlashes) {
+        ctx.save();
+        for (let i = window.muzzleFlashes.length - 1; i >= 0; i--) {
+            const flash = window.muzzleFlashes[i];
+            
+            flash.life -= deltaTime;
+            const opacity = flash.life / flash.maxLife;
+            const scale = 1 - opacity;
+            
+            ctx.globalAlpha = opacity;
+            ctx.translate(flash.x, flash.y);
+            ctx.rotate(flash.angle);
+            ctx.scale(0.5 + scale, 0.5 + scale/2);
+            
+            // Draw flash
+            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, 15);
+            gradient.addColorStop(0, 'rgba(255, 255, 200, 1)');
+            gradient.addColorStop(0.5, 'rgba(255, 120, 0, 0.8)');
+            gradient.addColorStop(1, 'rgba(255, 20, 0, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(0, 0, 15, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+            ctx.save();
+            
+            if (flash.life <= 0) {
+                window.muzzleFlashes.splice(i, 1);
+            }
+        }
+        ctx.restore();
+    }
+    
+    // Draw explosion particles with improved rendering
+    if (window.explosionParticles) {
+        for (let i = window.explosionParticles.length - 1; i >= 0; i--) {
+            const particle = window.explosionParticles[i];
+            
+            // Update position with gravity and drag
+            particle.vy += particle.gravity;
+            particle.vx *= 0.98;
+            particle.vy *= 0.98;
+            
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            
+            // Update life
+            particle.life -= deltaTime;
+            
+            // Draw particle with gradient
+            const opacity = Math.min(1, particle.life / (particle.maxLife / 2));
+            ctx.globalAlpha = opacity;
+            
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+            
+            // Create gradient for more realistic particles
+            const gradient = ctx.createRadialGradient(
+                particle.x, particle.y, 0,
+                particle.x, particle.y, particle.radius
+            );
+            gradient.addColorStop(0, particle.color);
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // Remove if expired
+            if (particle.life <= 0) {
+                window.explosionParticles.splice(i, 1);
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
+    
+    // Draw shockwaves
+    if (window.shockwaves) {
+        for (let i = window.shockwaves.length - 1; i >= 0; i--) {
+            const shockwave = window.shockwaves[i];
+            
+            // Update life and size
+            shockwave.life -= deltaTime;
+            shockwave.radius = shockwave.maxRadius * (1 - shockwave.life / shockwave.maxLife);
+            
+            // Draw shockwave
+            const opacity = Math.min(1, shockwave.life / shockwave.maxLife);
+            ctx.globalAlpha = opacity * 0.7;
+            ctx.strokeStyle = shockwave.color;
+            ctx.lineWidth = 3;
+            
+            ctx.beginPath();
+            ctx.arc(shockwave.x, shockwave.y, shockwave.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Remove if expired
+            if (shockwave.life <= 0) {
+                window.shockwaves.splice(i, 1);
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
+    
+    // Draw debris
+    if (window.debris) {
+        for (let i = window.debris.length - 1; i >= 0; i--) {
+            const debris = window.debris[i];
+            
+            // Update position and rotation
+            debris.x += debris.vx;
+            debris.y += debris.vy;
+            debris.angle += debris.rotationSpeed;
+            debris.life -= deltaTime;
+            
+            // Draw debris
+            const opacity = Math.min(1, debris.life / debris.maxLife);
+            ctx.globalAlpha = opacity;
+            
+            ctx.save();
+            ctx.translate(debris.x, debris.y);
+            ctx.rotate(debris.angle);
+            ctx.fillStyle = debris.color;
+            ctx.fillRect(-debris.width/2, -debris.height/2, debris.width, debris.height);
+            ctx.restore();
+            
+            // Remove if expired
+            if (debris.life <= 0) {
+                window.debris.splice(i, 1);
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
     
     // Continue game loop
     requestAnimationFrame(gameLoop);
@@ -2116,12 +2095,10 @@ function checkBulletCollisions() {
             
             // Check collision
             if (tank.respawning) continue; // Skip if tank is respawning
-            
             if (bullet.x - bullet.radius < tank.x + tank.width &&
                 bullet.x + bullet.radius > tank.x &&
                 bullet.y - bullet.radius < tank.y + tank.height &&
                 bullet.y + bullet.radius > tank.y) {
-                
                 // Hit!
                 if (tank.hit()) {
                     // Tank was destroyed
@@ -2143,6 +2120,88 @@ function checkBulletCollisions() {
     }
 }
 
+// Fix function for creating explosion effects
+function createExplosionEffect(x, y, size, color = "#ff5500", particleCount = 20, addShockwave = false) {
+    // Create particles in all directions
+    for (let i = 0; i < particleCount; i++) {
+        const angle = (i / particleCount) * Math.PI * 2;
+        const speed = 1 + Math.random() * 3;
+        const distance = Math.random() * size / 2;
+        
+        const particle = {
+            x: x + Math.cos(angle) * (Math.random() * 5),
+            y: y + Math.sin(angle) * (Math.random() * 5),
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            radius: size / 6 * Math.random() + size / 8,
+            life: 500 + Math.random() * 300, // 0.5-0.8 seconds
+            maxLife: 800,
+            color: color || `rgba(255, ${Math.floor(Math.random() * 100)}, 0, ${0.8 + Math.random() * 0.2})`,
+            gravity: 0.05 * Math.random()
+        };
+        
+        // Initialize explosionParticles if needed
+        if (!window.explosionParticles) window.explosionParticles = [];
+        window.explosionParticles.push(particle);
+    }
+    
+    // Add shockwave for bigger explosions
+    if (addShockwave) {
+        const shockwave = {
+            x: x,
+            y: y,
+            radius: size / 4,
+            maxRadius: size * 1.5,
+            life: 300,
+            maxLife: 300,
+            color: 'rgba(255, 255, 255, 0.8)'
+        };
+        
+        if (!window.shockwaves) window.shockwaves = [];
+        window.shockwaves.push(shockwave);
+    }
+    
+    // Add debris for more realistic explosions
+    if (size > 20) {
+        for (let i = 0; i < 5; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.5 + Math.random() * 2;
+            
+            const debris = {
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                width: 2 + Math.random() * 4,
+                height: 2 + Math.random() * 4,
+                angle: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.2,
+                life: 1000 + Math.random() * 1000,
+                maxLife: 2000,
+                color: '#888888'
+            };
+            
+            if (!window.debris) window.debris = [];
+            window.debris.push(debris);
+        }
+    }
+}
+
+// Add muzzle flash effect function
+function createMuzzleFlash(x, y, angle) {
+    const flash = {
+        x: x,
+        y: y,
+        angle: angle,
+        scale: 1,
+        life: 150,
+        maxLife: 150
+    };
+    
+    if (!window.muzzleFlashes) window.muzzleFlashes = [];
+    window.muzzleFlashes.push(flash);
+}
+
 // UI functions
 function showStartScreen() {
     startScreen.classList.remove('hidden');
@@ -2152,6 +2211,9 @@ function showStartScreen() {
     
     // Ensure the game is initialized
     initGame();
+    
+    // Hide tank status UI
+    if (window.tankStatusUI) window.tankStatusUI.hide();
 }
 
 function showSettingsMenu() {
@@ -2170,7 +2232,6 @@ function showSettingsMenu() {
 // Update the showCountdown function to include debug logging
 function showCountdown() {
     console.log('Starting countdown sequence');
-    
     if (!startScreen || !countdownScreen) {
         console.error('Required screen elements not found for countdown');
         return;
@@ -2181,8 +2242,6 @@ function showCountdown() {
     
     let count = 3;
     countdownText.textContent = count;
-    
-    gameState.countdown = true;
     console.log('Countdown started:', count);
     
     const countInterval = setInterval(() => {
@@ -2199,14 +2258,16 @@ function showCountdown() {
             startGame();
         }
     }, 1000);
+    
+    // Show tank status UI
+    if (window.tankStatusUI) window.tankStatusUI.show();
 }
 
 function startGame() {
     // Make sure old game loop is not running
     if (gameState.active) {
-        console.log("Cancelling previous game loop");
         gameState.active = false;
-        // Let the current frame finish before starting new game
+        console.log("Cancelling previous game loop");
         setTimeout(() => {
             gameState.active = true;
             gameState.over = false;
@@ -2249,12 +2310,14 @@ function showGameOverScreen(winningPlayer) {
         powerupsCollected.textContent = winningPlayer === 1 ? stats.p1PowerupsCollected : stats.p2PowerupsCollected;
         restartButton.disabled = false;
     }
-    
     console.log("Game over screen shown, winner is Player " + winningPlayer);
+    
+    // Hide tank status UI
+    if (window.tankStatusUI) window.tankStatusUI.hide();
 }
 
+// Keyboard controls
 document.addEventListener('DOMContentLoaded', () => {
-    // Setup button listeners
     startButton.addEventListener('click', showCountdown);
     settingsButton.addEventListener('click', showSettingsMenu);
     backButton.addEventListener('click', showStartScreen);
@@ -2328,98 +2391,30 @@ function handleKeyDown(e) {
     
     // Debug key bindings
     if (e.key === 'F8') {
-        console.log('Current game state:', { tanks, obstacles, networkReady, onlineMode });
+        console.log('Current game state:', { tanks, obstacles });
         return;
     }
     
-    if (e.key === 'F9' && onlineMode && networkManager) {
-        networkManager.requestGameState();
-        if (window.networkUI) {
-            window.networkUI.showToast('Requesting game state sync from server');
-        }
-        return;
-    }
-    
-    // Control tanks - make sure localPlayerNumber is valid
+    // Control tanks
     if (!gameState.active || gameState.over) return;
     
-    const myTankIndex = (onlineMode && localPlayerNumber > 0) ? localPlayerNumber - 1 : -1;
-    let inputApplied = false;
-    
-    // In online mode, only control your own tank
-    if (onlineMode) {
-        if (myTankIndex >= 0 && myTankIndex < tanks.length) {
-            const tank = tanks[myTankIndex];
-            if (tank && tank.controls) {
-                // Apply key press to tank
-                if (e.key === tank.controls.forward) {
-                    tank.moving.forward = true;
-                    inputApplied = true;
-                }
-                if (e.key === tank.controls.backward) {
-                    tank.moving.backward = true;
-                    inputApplied = true;
-                }
-                if (e.key === tank.controls.left) {
-                    tank.moving.left = true;
-                    inputApplied = true;
-                }
-                if (e.key === tank.controls.right) {
-                    tank.moving.right = true;
-                    inputApplied = true;
-                }
-                if (e.key === tank.controls.shoot) {
-                    tank.shooting = true;
-                    inputApplied = true;
-                }
-            }
-        }
-    } 
-    // In offline mode, control all tanks with controls
-    else {
-        for (let tank of tanks) {
-            if (!tank.controls) continue;
-            
-            if (e.key === tank.controls.forward) {
-                tank.moving.forward = true;
-                inputApplied = true;
-            }
-            if (e.key === tank.controls.backward) {
-                tank.moving.backward = true;
-                inputApplied = true;
-            }
-            if (e.key === tank.controls.left) {
-                tank.moving.left = true;
-                inputApplied = true;
-            }
-            if (e.key === tank.controls.right) {
-                tank.moving.right = true;
-                inputApplied = true;
-            }
-            if (e.key === tank.controls.shoot) {
-                tank.shooting = true;
-                inputApplied = true;
-            }
-        }
-    }
-    
-    // Only send input to server if we actually processed a game input
-    if (onlineMode && networkReady && inputApplied && myTankIndex >= 0) {
-        const tank = tanks[myTankIndex];
+    for (let tank of tanks) {
+        if (!tank.controls) continue;
         
-        if (tank) {
-            // Queue this input to be sent
-            inputBuffer.push({
-                type: 'keydown',
-                key: e.key,
-                time: Date.now(),
-                tank: {
-                    moving: { ...tank.moving },
-                    shooting: tank.shooting,
-                    position: { x: tank.x, y: tank.y },
-                    angle: tank.angle
-                }
-            });
+        if (e.key === tank.controls.forward) {
+            tank.moving.forward = true;
+        }
+        if (e.key === tank.controls.backward) {
+            tank.moving.backward = true;
+        }
+        if (e.key === tank.controls.left) {
+            tank.moving.left = true;
+        }
+        if (e.key === tank.controls.right) {
+            tank.moving.right = true;
+        }
+        if (e.key === tank.controls.shoot) {
+            tank.shooting = true;
         }
     }
 }
@@ -2428,225 +2423,13 @@ function handleKeyDown(e) {
 function handleKeyUp(e) {
     if (!gameState.active || gameState.over) return;
     
-    const myTankIndex = (onlineMode && localPlayerNumber > 0) ? localPlayerNumber - 1 : -1;
-    let inputApplied = false;
-    
-    // In online mode, only control your own tank
-    if (onlineMode) {
-        if (myTankIndex >= 0 && myTankIndex < tanks.length) {
-            const tank = tanks[myTankIndex];
-            if (tank && tank.controls) {
-                if (e.key === tank.controls.forward) {
-                    tank.moving.forward = false;
-                    inputApplied = true;
-                }
-                if (e.key === tank.controls.backward) {
-                    tank.moving.backward = false;
-                    inputApplied = true;
-                }
-                if (e.key === tank.controls.left) {
-                    tank.moving.left = false;
-                    inputApplied = true;
-                }
-                if (e.key === tank.controls.right) {
-                    tank.moving.right = false;
-                    inputApplied = true;
-                }
-                if (e.key === tank.controls.shoot) {
-                    tank.shooting = false;
-                    inputApplied = true;
-                }
-            }
-        }
-    } 
-    // In offline mode, control all tanks with controls
-    else {
-        for (let tank of tanks) {
-            if (!tank.controls) continue;
-            
-            if (e.key === tank.controls.forward) tank.moving.forward = false;
-            if (e.key === tank.controls.backward) tank.moving.backward = false;
-            if (e.key === tank.controls.left) tank.moving.left = false;
-            if (e.key === tank.controls.right) tank.moving.right = false;
-            if (e.key === tank.controls.shoot) tank.shooting = false;
-        }
+    for (let tank of tanks) {
+        if (!tank.controls) continue;
+        
+        if (e.key === tank.controls.forward) tank.moving.forward = false;
+        if (e.key === tank.controls.backward) tank.moving.backward = false;
+        if (e.key === tank.controls.left) tank.moving.left = false;
+        if (e.key === tank.controls.right) tank.moving.right = false;
+        if (e.key === tank.controls.shoot) tank.shooting = false;
     }
-    
-    // Only send input to server if we actually processed a game input
-    if (onlineMode && networkReady && inputApplied && myTankIndex >= 0) {
-        const tank = tanks[myTankIndex];
-        
-        if (tank) {
-            // Queue this input to be sent
-            inputBuffer.push({
-                type: 'keyup',
-                key: e.key,
-                time: Date.now(),
-                tank: {
-                    moving: { ...tank.moving },
-                    shooting: tank.shooting,
-                    position: { x: tank.x, y: tank.y },
-                    angle: tank.angle
-                }
-            });
-        }
-    }
-}
-
-// Update the network handler function to properly handle server positions
-function setupNetworkHandlers() {
-    if (!networkManager) return;
-    
-    // Listen for position confirmation from server
-    networkManager.on('onPositionConfirmation', (data) => {
-        if (!data || !data.position) return;
-        
-        // Apply position correction from server to our own tank
-        const myTankIndex = localPlayerNumber - 1;
-        if (myTankIndex >= 0 && myTankIndex < tanks.length) {
-            const myTank = tanks[myTankIndex];
-            
-            // Only apply if the correction is significant
-            const dx = data.position.x - myTank.x;
-            const dy = data.position.y - myTank.y;
-            const distSq = dx*dx + dy*dy;
-            
-            // If position is very different, immediately correct
-            if (distSq > 25) {
-                console.log('Server position correction applied');
-                myTank.x = data.position.x;
-                myTank.y = data.position.y;
-            } else {
-                // Otherwise, smoothly interpolate
-                myTank.targetX = data.position.x;
-                myTank.targetY = data.position.y;
-            }
-            
-            if (Math.abs(data.position.angle - myTank.angle) > 0.1) {
-                myTank.targetAngle = data.position.angle;
-            }
-        }
-    });
-    
-    // Handle opponent input with improved position handling
-    networkManager.on('onOpponentInput', (data) => {
-        if (!data || !data.input) return;
-        
-        const opponentTankIndex = data.playerNumber === 1 ? 0 : 1;
-        const myTankIndex = localPlayerNumber - 1;
-        const tank = tanks[opponentTankIndex];
-        
-        // Don't apply inputs to my own tank
-        if (opponentTankIndex === myTankIndex) return;
-        
-        // Get opponent's tank
-        if (!tank) return;
-        
-        // Apply movement controls
-        if (data.input.moving !== undefined) {
-            tank.moving = data.input.moving;
-        }
-        
-        // Apply shooting state
-        if (data.input.shooting !== undefined) {
-            tank.shooting = data.input.shooting;
-        }
-        
-        // Always use server position for opponent
-        if (data.input.serverPosition) {
-            // If position changed significantly or if position is very different, apply it
-            const dx = data.input.serverPosition.x - tank.x;
-            const dy = data.input.serverPosition.y - tank.y;
-            const distSq = dx*dx + dy*dy;
-            
-            if (data.input.positionChanged || distSq > 100) {
-                // Use immediate position update for large changes
-                tank.x = data.input.serverPosition.x;
-                tank.y = data.input.serverPosition.y;
-                tank.angle = data.input.serverPosition.angle;
-                
-                // Update target positions too
-                tank.targetX = data.input.serverPosition.x;
-                tank.targetY = data.input.serverPosition.y;
-                tank.targetAngle = data.input.serverPosition.angle;
-            } else {
-                // Use smooth interpolation for small changes
-                tank.targetX = data.input.serverPosition.x;
-                tank.targetY = data.input.serverPosition.y;
-                tank.targetAngle = data.input.serverPosition.angle;
-            }
-        }
-    });
-    
-    // Handle powerup spawning from server
-    networkManager.on('onPowerUpSpawn', (data) => {
-        if (!data || !data.powerUp) return;
-        
-        console.log('Server spawned powerup:', data.powerUp);
-        
-        // Create the powerup in game
-        const powerUp = new PowerUp(
-            data.powerUp.x, 
-            data.powerUp.y, 
-            data.powerUp.type
-        );
-        powerUps.push(powerUp);
-    });
-    
-    // Handle powerup collection
-    networkManager.on('onPowerUpCollected', (data) => {
-        if (!data || data.powerUpIndex === undefined) return;
-        
-        // Remove the powerup if it exists
-        if (data.powerUpIndex >= 0 && data.powerUpIndex < powerUps.length) {
-            // Find the tank that collected it
-            const tank = tanks.find(t => t.playerNumber === data.playerNumber);
-            if (tank) {
-                // Apply the powerup effect
-                const powerUp = powerUps[data.powerUpIndex];
-                if (powerUp) {
-                    powerUp.applyPowerUp(tank);
-                }
-            }
-            
-            // Remove the powerup
-            powerUps.splice(data.powerUpIndex, 1);
-        }
-    });
-}
-
-// Modify the network class to handle these new message types
-// (Only if they don't already exist)
-if (typeof networkManager !== 'undefined') {
-    // Add handler for powerup collection message
-    networkManager.handleMessage = function(data) {
-        // Existing code...
-        
-        try {
-            const message = JSON.parse(data);
-            
-            switch(message.type) {
-                // Existing cases...
-                
-                case 'position_confirmation':
-                    this._triggerCallbacks('onPositionConfirmation', {
-                        position: message.position,
-                        timestamp: message.timestamp
-                    });
-                    break;
-                    
-                case 'powerup_collected':
-                    this._triggerCallbacks('onPowerUpCollected', {
-                        playerNumber: message.playerNumber,
-                        powerUpIndex: message.powerUpIndex,
-                        powerUpType: message.powerUpType
-                    });
-                    break;
-                
-                // Other cases...
-            }
-        } catch (error) {
-            console.error('Error parsing message:', error);
-        }
-    };
 }

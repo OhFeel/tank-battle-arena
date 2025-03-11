@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tank Battle Arena</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/victory-screen.css">
+    <link rel="stylesheet" href="css/tank-status.css">
     <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <style>
         /* Fallback styles in case external CSS fails to load */
         body { background-color: #2c3e50; margin: 0; font-family: sans-serif; }
@@ -14,6 +17,7 @@
     </style>
     <link rel="stylesheet" href="css/online.css">
     <link rel="stylesheet" href="css/game-ui.css">
+    <link rel="stylesheet" href="css/animations.css">
 </head>
 <body>
     <div class="game-container">
@@ -68,13 +72,139 @@
             <h2 id="countdownText">3</h2>
             <p class="countdown-info">Get ready!</p>
         </div>
-
+        
+        <!-- Victory Screen container -->
+        <div id="victoryScreen" class="victory-screen hidden"></div>
+        
         <!-- Error message div -->
         <div id="errorMessage" class="error-message" style="display:none;">
             Error loading game resources. Check browser console for details.
         </div>
+        
+        <!-- Tank status UI -->
+        <div class="tank-status-container">
+            <div class="tank-status blue" id="p1Status">
+                <div class="tank-info">
+                    <div class="tank-icon blue"></div>
+                    <div class="tank-stats">
+                        <div>Lives: <span id="p1Lives">3</span></div>
+                        <div>Ammo: <span id="p1Ammo">5</span></div>
+                    </div>
+                </div>
+                <div class="power-up-grid" id="p1PowerUps">
+                    <div class="power-up-item power-shield" data-type="shield">
+                        <i class="fas fa-shield-alt"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-ricochet" data-type="ricochet">
+                        <i class="fas fa-exchange-alt"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-piercing" data-type="piercing">
+                        <i class="fas fa-bolt"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-speed" data-type="speedBoost">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-rapid" data-type="rapidFire">
+                        <i class="fas fa-angle-double-right"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-mine" data-type="mines">
+                        <i class="fas fa-bomb"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-spread" data-type="spreadShot">
+                        <i class="fas fa-spray-can"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-magnetic" data-type="magneticShield">
+                        <i class="fas fa-magnet"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-invis" data-type="invisibility">
+                        <i class="fas fa-ghost"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-mega" data-type="megaBullet">
+                        <i class="fas fa-bullseye"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-homing" data-type="homingMissile">
+                        <i class="fas fa-crosshairs"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-emp" data-type="empActive">
+                        <i class="fas fa-plug"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tank-status red" id="p2Status">
+                <div class="tank-info">
+                    <div class="tank-icon red"></div>
+                    <div class="tank-stats">
+                        <div>Lives: <span id="p2Lives">3</span></div>
+                        <div>Ammo: <span id="p2Ammo">5</span></div>
+                    </div>
+                </div>
+                <div class="power-up-grid" id="p2PowerUps">
+                    <div class="power-up-item power-shield" data-type="shield">
+                        <i class="fas fa-shield-alt"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-ricochet" data-type="ricochet">
+                        <i class="fas fa-exchange-alt"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-piercing" data-type="piercing">
+                        <i class="fas fa-bolt"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-speed" data-type="speedBoost">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-rapid" data-type="rapidFire">
+                        <i class="fas fa-angle-double-right"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-mine" data-type="mines">
+                        <i class="fas fa-bomb"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-spread" data-type="spreadShot">
+                        <i class="fas fa-spray-can"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-magnetic" data-type="magneticShield">
+                        <i class="fas fa-magnet"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-invis" data-type="invisibility">
+                        <i class="fas fa-ghost"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-mega" data-type="megaBullet">
+                        <i class="fas fa-bullseye"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-homing" data-type="homingMissile">
+                        <i class="fas fa-crosshairs"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                    <div class="power-up-item power-emp" data-type="empActive">
+                        <i class="fas fa-plug"></i>
+                        <div class="power-up-timer"><div class="power-up-timer-bar"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-
+    
     <!-- Audio elements -->
     <audio id="backgroundMusic" loop>
         <source src="audio/background_music.mp3" type="audio/mpeg">
@@ -91,9 +221,11 @@
     <audio id="bounceSound">
         <source src="audio/bounce.mp3" type="audio/mpeg">
     </audio>
+    <audio id="victorySound">
+        <source src="audio/victory.mp3" type="audio/mpeg">
+    </audio>
 
-    <!-- Load scripts -->
-    <script src="js/audio-fix.js"></script>
+    <!-- Error handling and loading scripts -->
     <script>
         // Error handling for script loading
         window.addEventListener('error', function(e) {
@@ -110,22 +242,9 @@
                 console.warn('CSS may not be loading correctly');
             }
         });
-    </script>
-    <script src="js/network.js"></script>
-    <script src="js/game.js"></script>
-    <script src="js/online-ui.js"></script>
-    <script src="js/debug-overlay.js"></script>
-    <script src="js/network-ui.js"></script>
-    <script src="js/game-recovery.js"></script>
-    <script src="js/diagnostic.js"></script><script src="js/debug-logger.js"></script>
-    <script src="js/force-start.js"></script>
-    <script src="js/connection-fix.js"></script>
-</body>
-</html>    <script>
-
-        // Add a check for stuck game state
+        
+        // Add a visible loading indicator
         window.addEventListener('load', function() {
-            // Add a visible loading indicator
             const loadingDiv = document.createElement('div');
             loadingDiv.id = 'game-loading';
             loadingDiv.style.position = 'fixed';
@@ -137,41 +256,23 @@
             loadingDiv.style.padding = '8px 15px';
             loadingDiv.style.borderRadius = '4px';
             loadingDiv.style.zIndex = '9999';
-            loadingDiv.textContent = 'Connecting to server...';
+            loadingDiv.textContent = 'Loading game...';
+            
             document.body.appendChild(loadingDiv);
             
-            // Update loading status based on network state
-            function updateLoadingStatus() {
-                if (!window.networkManager) return;
-                
-                if (networkManager.connected) {
-                    loadingDiv.textContent = 'Connected to server';
-                    loadingDiv.style.background = 'rgba(46, 204, 113, 0.7)';
-                    
-                    if (networkManager.gameId) {
-                        loadingDiv.textContent = 'Game found, initializing...';
-                    }
-                    
-                    if (window.gameState && gameState.active) {
-                        loadingDiv.style.display = 'none';
-                    }
-                } else {
-                    loadingDiv.textContent = 'Connecting to server...';
-                    loadingDiv.style.background = 'rgba(231, 76, 60, 0.7)';
-                }
-            }
-            
-            // Update status regularly
-            const statusInterval = setInterval(updateLoadingStatus, 1000);
-            
-            // Hide after 15 seconds regardless of state
+            // Hide after 5 seconds regardless of state
             setTimeout(() => {
                 if (loadingDiv.parentNode) {
                     loadingDiv.parentNode.removeChild(loadingDiv);
                 }
-                clearInterval(statusInterval);
-            }, 15000);
+            }, 5000);
         });
     </script>
+    
+    <!-- Load game scripts -->
+    <script src="js/fps-counter.js"></script>
+    <script src="js/victory-screen.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/tank-status.js"></script>
 </body>
 </html>

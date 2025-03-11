@@ -1,276 +1,311 @@
 /**
- * Victory Screen Manager
- * Handles the enhanced game over screen with 3D effects and detailed stats
+ * Victory Screen
+ * Creates an animated victory celebration screen with stats and effects
  */
 
 class VictoryScreen {
     constructor() {
         this.container = document.getElementById('victoryScreen');
-        this.confetti = [];
-        this.confettiColors = [
-            '#f94144', '#f3722c', '#f8961e', '#f9c74f', 
-            '#90be6d', '#43aa8b', '#577590', '#277da1'
-        ];
-        this.stats = {};
         this.gameData = null;
+        this.confetti = [];
+        this.stars = [];
+        this.confettiColors = [
+            '#f44336', '#e91e63', '#9c27b0', '#673ab7', 
+            '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4',
+            '#009688', '#4CAF50', '#8BC34A', '#CDDC39',
+            '#FFEB3B', '#FFC107', '#FF9800', '#FF5722'
+        ];
     }
 
-    // Initialize the victory screen with game data
     initialize(gameData) {
         this.gameData = gameData;
         
-        // Create container if it doesn't exist
-        if (!this.container) {
-            this.container = document.createElement('div');
-            this.container.id = 'victoryScreen';
-            this.container.className = 'victory-screen hidden';
-            document.querySelector('.game-container').appendChild(this.container);
+        // Clean up any existing content
+        if (this.container) {
+            this.container.innerHTML = '';
         }
-
-        // Load CSS if not already loaded
-        if (!document.getElementById('victory-screen-css')) {
-            const link = document.createElement('link');
-            link.id = 'victory-screen-css';
-            link.rel = 'stylesheet';
-            link.href = 'css/victory-screen.css';
-            document.head.appendChild(link);
-        }
-
-        // Set up event listeners
-        document.addEventListener('mousemove', this.handleMouseMove.bind(this));
-        
-        // Precompute stats
-        this.computeStats();
     }
 
-    // Show the victory screen with the given winner
     show(winningPlayer) {
-        // Create content
-        this.buildContent(winningPlayer);
+        if (!this.container) return;
         
-        // Show the screen
+        // Create victory content
+        this.createContent(winningPlayer);
+        
+        // Show the container
         this.container.classList.remove('hidden');
-        
-        // Start confetti
-        this.startConfetti();
         
         // Play victory sound
         const victorySound = document.getElementById('victorySound');
         if (victorySound) {
-            victorySound.volume = 0.7;
-            victorySound.play().catch(e => console.log("Couldn't play victory sound"));
+            victorySound.play().catch(err => console.warn('Could not play victory sound:', err));
         }
         
-        // Return a promise that resolves when animations are complete
-        return new Promise(resolve => {
-            setTimeout(resolve, 1500);
-        });
+        // Generate effects
+        this.generateConfetti();
+        this.generateStars();
+        this.startAnimation();
     }
 
-    // Hide the victory screen
     hide() {
+        if (!this.container) return;
         this.container.classList.add('hidden');
-        this.stopConfetti();
+        
+        // Clean up animations
+        this.stopAnimation();
     }
 
-    // Build the content of the victory screen
-    buildContent(winningPlayer) {
-        const playerColor = winningPlayer === 1 ? '#3498db' : '#e74c3c';
-        const losingPlayer = winningPlayer === 1 ? 2 : 1;
+    createContent(winningPlayer) {
+        if (!this.gameData) return;
         
-        const content = `
-            <div class="victory-content">
-                <div class="stage-floor"></div>
-                
-                <div class="trophy">
-                    <div class="trophy-cup">
-                        <div class="trophy-highlight"></div>
-                    </div>
-                    <div class="trophy-stem"></div>
-                    <div class="trophy-base"></div>
-                </div>
-                
-                <h1 class="victory-title">Player ${winningPlayer} Wins!</h1>
-                
-                <div class="winner-display">
-                    <div class="winner-tank">
-                        <div class="tank-body" style="background-color: ${playerColor}">
-                            <div class="tank-turret"></div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="stats-container">
-                    <div class="stats-column">
-                        <h3 class="stats-heading">Player ${winningPlayer} Stats</h3>
-                        <div class="stat-item">
-                            <span class="stat-label">Shots Fired:</span>
-                            <span class="stat-value">${this.stats[`p${winningPlayer}ShotsFired`] || 0}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Power-ups Collected:</span>
-                            <span class="stat-value">${this.stats[`p${winningPlayer}PowerupsCollected`] || 0}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Hit Ratio:</span>
-                            <span class="stat-value">${this.stats[`p${winningPlayer}HitRatio`] || '0%'}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Damage Dealt:</span>
-                            <span class="stat-value">${this.stats[`p${winningPlayer}DamageDealt`] || 0}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Lives Remaining:</span>
-                            <span class="stat-value">${this.stats[`p${winningPlayer}LivesRemaining`] || 0}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="stats-column">
-                        <h3 class="stats-heading">Player ${losingPlayer} Stats</h3>
-                        <div class="stat-item">
-                            <span class="stat-label">Shots Fired:</span>
-                            <span class="stat-value">${this.stats[`p${losingPlayer}ShotsFired`] || 0}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Power-ups Collected:</span>
-                            <span class="stat-value">${this.stats[`p${losingPlayer}PowerupsCollected`] || 0}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Hit Ratio:</span>
-                            <span class="stat-value">${this.stats[`p${losingPlayer}HitRatio`] || '0%'}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Damage Dealt:</span>
-                            <span class="stat-value">${this.stats[`p${losingPlayer}DamageDealt`] || 0}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Lives Remaining:</span>
-                            <span class="stat-value">0</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="action-buttons">
-                    <button id="victoryRestartButton" class="victory-button">Play Again</button>
-                    <button id="victoryMenuButton" class="victory-button">Main Menu</button>
-                </div>
-            </div>
-        `;
+        const winner = this.gameData.winner || winningPlayer;
+        const p1 = this.gameData.tanks && this.gameData.tanks[0];
+        const p2 = this.gameData.tanks && this.gameData.tanks[1];
+        const stats = this.gameData.stats || {
+            p1ShotsFired: 0,
+            p2ShotsFired: 0,
+            p1PowerupsCollected: 0,
+            p2PowerupsCollected: 0
+        };
+
+        // Add ribbons for decoration
+        const leftRibbon = document.createElement('div');
+        leftRibbon.className = 'ribbon left';
+        this.container.appendChild(leftRibbon);
         
-        this.container.innerHTML = content;
+        const rightRibbon = document.createElement('div');
+        rightRibbon.className = 'ribbon right';
+        this.container.appendChild(rightRibbon);
         
-        // Add event listeners to buttons
-        document.getElementById('victoryRestartButton').addEventListener('click', () => {
+        // Create a star background container
+        const starContainer = document.createElement('div');
+        starContainer.className = 'star-container';
+        this.container.appendChild(starContainer);
+        
+        // Trophy animation
+        const trophy = document.createElement('div');
+        trophy.className = 'trophy-animation';
+        trophy.innerHTML = '🏆';
+        this.container.appendChild(trophy);
+        
+        // Main content container
+        const content = document.createElement('div');
+        content.className = 'victory-content';
+        
+        // Victory title
+        const title = document.createElement('h1');
+        title.className = `victory-title ${winner === 1 ? 'p1-win' : 'p2-win'} glow-effect`;
+        title.textContent = `Player ${winner} Wins!`;
+        content.appendChild(title);
+        
+        // Add medals/decoration
+        const medalDiv = document.createElement('div');
+        medalDiv.className = 'medal-container';
+        
+        const medal = document.createElement('div');
+        medal.className = 'medal';
+        medalDiv.appendChild(medal);
+        
+        content.appendChild(medalDiv);
+        
+        // Stats section
+        const statsDiv = document.createElement('div');
+        statsDiv.className = 'victory-stats';
+        
+        const statsTitle = document.createElement('h3');
+        statsTitle.textContent = 'Battle Statistics';
+        statsDiv.appendChild(statsTitle);
+        
+        // Create stat cards
+        const createStatCard = (value, label) => {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            
+            const statValue = document.createElement('div');
+            statValue.className = 'stat-value';
+            statValue.textContent = value;
+            card.appendChild(statValue);
+            
+            const statLabel = document.createElement('div');
+            statLabel.className = 'stat-label';
+            statLabel.textContent = label;
+            card.appendChild(statLabel);
+            
+            return card;
+        };
+        
+        // Add stat cards for winning player
+        const winnerStats = winner === 1 ? 
+            { shots: stats.p1ShotsFired, powerups: stats.p1PowerupsCollected } : 
+            { shots: stats.p2ShotsFired, powerups: stats.p2PowerupsCollected };
+        
+        statsDiv.appendChild(createStatCard(winnerStats.shots, 'Shots Fired'));
+        statsDiv.appendChild(createStatCard(winnerStats.powerups, 'Power-ups Collected'));
+        
+        const winnerLives = winner === 1 ? (p1 ? p1.lives : '?') : (p2 ? p2.lives : '?');
+        statsDiv.appendChild(createStatCard(winnerLives, 'Lives Remaining'));
+        
+        // Calculate accuracy if we have meaningful stats
+        if (winnerStats.shots > 0) {
+            // Simple approximation: assume each hit reduced opponent's lives by 1
+            const opponentMaxLives = 3; // Based on the tank class definition
+            const hits = opponentMaxLives - 0; // Opponent has 0 lives left
+            const accuracy = Math.round((hits / winnerStats.shots) * 100);
+            
+            statsDiv.appendChild(createStatCard(accuracy + '%', 'Accuracy'));
+        } else {
+            statsDiv.appendChild(createStatCard('N/A', 'Accuracy'));
+        }
+        
+        content.appendChild(statsDiv);
+        
+        // Action buttons
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'victory-buttons';
+        
+        const playAgainBtn = document.createElement('button');
+        playAgainBtn.className = 'victory-button';
+        playAgainBtn.textContent = 'Play Again';
+        playAgainBtn.addEventListener('click', () => {
             this.hide();
-            restartButton.click(); // Use the original game's restart button
+            
+            // Reset game state
+            if (window.gameState) {
+                window.gameState.over = false;
+            }
+            
+            // Reset and restart the game
+            if (typeof initGame === 'function' && typeof showCountdown === 'function') {
+                initGame();
+                setTimeout(showCountdown, 500);
+            }
         });
+        buttonsDiv.appendChild(playAgainBtn);
         
-        document.getElementById('victoryMenuButton').addEventListener('click', () => {
+        const menuBtn = document.createElement('button');
+        menuBtn.className = 'victory-button';
+        menuBtn.textContent = 'Main Menu';
+        menuBtn.addEventListener('click', () => {
             this.hide();
-            menuButton.click(); // Use the original game's menu button
+            
+            // Return to main menu
+            if (typeof showStartScreen === 'function') {
+                showStartScreen();
+            }
         });
+        buttonsDiv.appendChild(menuBtn);
+        
+        content.appendChild(buttonsDiv);
+        
+        // Add content to container
+        this.container.appendChild(content);
     }
 
-    // Handle mouse movement for 3D effect
-    handleMouseMove(event) {
-        if (this.container.classList.contains('hidden')) return;
+    generateConfetti() {
+        // Clear existing confetti
+        this.confetti = [];
         
-        const content = this.container.querySelector('.victory-content');
-        if (!content) return;
+        // Create confetti pieces
+        const confettiCount = 100;
         
-        // Get container dimensions and mouse position
-        const rect = this.container.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        
-        // Calculate rotation and perspective based on mouse position
-        const rotateY = (event.clientX - centerX) / (rect.width / 2) * 5;
-        const rotateX = (event.clientY - centerY) / (rect.height / 2) * -5;
-        
-        // Apply 3D transform
-        content.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
-    }
-    
-    // Create confetti effect
-    startConfetti() {
-        // Create 50 confetti pieces
-        for (let i = 0; i < 50; i++) {
-            setTimeout(() => {
-                this.createConfettiPiece();
-            }, i * 100);
+        for (let i = 0; i < confettiCount; i++) {
+            const confetti = document.createElement('div');
+            confetti.className = 'confetti';
+            confetti.style.backgroundColor = this.confettiColors[Math.floor(Math.random() * this.confettiColors.length)];
+            this.container.appendChild(confetti);
+            
+            // Store confetti element with its animation properties
+            this.confetti.push({
+                element: confetti,
+                x: Math.random() * window.innerWidth,
+                y: -20 - Math.random() * 100,
+                size: 5 + Math.random() * 10,
+                rotation: Math.random() * 360,
+                speed: 1 + Math.random() * 3,
+                rotationSpeed: (Math.random() - 0.5) * 10,
+                wobble: Math.random() * 10,
+                wobbleSpeed: Math.random() * 0.1
+            });
         }
     }
-    
-    createConfettiPiece() {
-        const confetti = document.createElement('div');
-        confetti.className = 'confetti';
+
+    generateStars() {
+        // Clear existing stars
+        this.stars = [];
         
-        // Random properties
-        const size = 5 + Math.random() * 10;
-        const color = this.confettiColors[Math.floor(Math.random() * this.confettiColors.length)];
-        const left = Math.random() * 100;
-        const duration = 3 + Math.random() * 4;
+        const starContainer = this.container.querySelector('.star-container');
+        if (!starContainer) return;
         
-        // Apply styles
-        confetti.style.width = `${size}px`;
-        confetti.style.height = `${size}px`;
-        confetti.style.backgroundColor = color;
-        confetti.style.left = `${left}%`;
-        confetti.style.animationDuration = `${duration}s`;
+        // Create star elements
+        const starCount = 100;
         
-        // Add to container
-        this.container.appendChild(confetti);
-        this.confetti.push(confetti);
-        
-        // Remove after animation is complete
-        setTimeout(() => {
-            confetti.remove();
-            this.confetti = this.confetti.filter(c => c !== confetti);
-        }, duration * 1000);
+        for (let i = 0; i < starCount; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            starContainer.appendChild(star);
+            
+            // Set initial position
+            const x = Math.random() * window.innerWidth;
+            const y = Math.random() * window.innerHeight;
+            
+            star.style.left = `${x}px`;
+            star.style.top = `${y}px`;
+            
+            // Set random size and opacity
+            const size = Math.random() * 3 + 1;
+            const opacity = Math.random() * 0.7 + 0.3;
+            
+            star.style.width = `${size}px`;
+            star.style.height = `${size}px`;
+            star.style.opacity = opacity;
+            
+            // Add twinkle animation with random delay
+            star.style.animation = `glow ${2 + Math.random() * 3}s infinite alternate`;
+            star.style.animationDelay = `${Math.random() * 5}s`;
+            
+            this.stars.push(star);
+        }
     }
-    
-    stopConfetti() {
-        this.confetti.forEach(confetti => confetti.remove());
-        this.confetti = [];
+
+    startAnimation() {
+        // Cancel any existing animation
+        this.stopAnimation();
+        
+        // Start the animation loop
+        this.animationId = requestAnimationFrame(this.animate.bind(this));
     }
-    
-    // Compute additional statistics
-    computeStats() {
-        // Use the existing stats and tanks data
-        const p1ShotsFired = this.gameData?.stats?.p1ShotsFired || 0;
-        const p2ShotsFired = this.gameData?.stats?.p2ShotsFired || 0;
+
+    stopAnimation() {
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+    }
+
+    animate() {
+        // Animate confetti falling
+        for (const item of this.confetti) {
+            item.y += item.speed;
+            item.rotation += item.rotationSpeed;
+            item.x += Math.sin(item.y * item.wobbleSpeed) * item.wobble;
+            
+            // Apply styles
+            item.element.style.opacity = '1';
+            item.element.style.transform = `translate(${item.x}px, ${item.y}px) rotate(${item.rotation}deg)`;
+            item.element.style.width = `${item.size}px`;
+            item.element.style.height = `${item.size}px`;
+            
+            // Reset confetti that goes off screen
+            if (item.y > window.innerHeight) {
+                item.y = -20;
+                item.x = Math.random() * window.innerWidth;
+            }
+        }
         
-        // Calculate hit ratio (approximate based on lives lost)
-        const p1HitRatio = p1ShotsFired > 0 ? Math.min(100, Math.round((2/p1ShotsFired) * 100)) : 0;
-        const p2HitRatio = p2ShotsFired > 0 ? Math.min(100, Math.round((2/p2ShotsFired) * 100)) : 0;
-        
-        // Get other stats from the game
-        const p1PowerupsCollected = this.gameData?.stats?.p1PowerupsCollected || 0;
-        const p2PowerupsCollected = this.gameData?.stats?.p2PowerupsCollected || 0;
-        
-        // Lives remaining - need to get from tanks array
-        const p1LivesRemaining = this.gameData?.tanks?.[0]?.lives || 0;
-        const p2LivesRemaining = this.gameData?.tanks?.[1]?.lives || 0;
-        
-        // Calculate damage dealt (for the demo, estimate based on lives) 
-        const p1DamageDealt = 3 - p2LivesRemaining;
-        const p2DamageDealt = 3 - p1LivesRemaining;
-        
-        // Store computed stats
-        this.stats = {
-            p1ShotsFired,
-            p2ShotsFired,
-            p1PowerupsCollected,
-            p2PowerupsCollected,
-            p1HitRatio: p1HitRatio + '%',
-            p2HitRatio: p2HitRatio + '%',
-            p1DamageDealt,
-            p2DamageDealt,
-            p1LivesRemaining,
-            p2LivesRemaining
-        };
+        // Continue the animation loop
+        this.animationId = requestAnimationFrame(this.animate.bind(this));
     }
 }
 
-// Create and export the victory screen instance
-const victoryScreen = new VictoryScreen();
+// Create global instance
+window.victoryScreen = new VictoryScreen();

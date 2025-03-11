@@ -1,0 +1,522 @@
+/* Update positioning for outside panels with fixed game container size */
+.tank-status-container {
+    position: absolute;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Allow clicks to pass through to the game */
+    z-index: 5;
+    left: 0;
+}
+
+.tank-status {
+    position: absolute;
+    width: 120px;
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 10px;
+    padding: 12px;
+    box-shadow: 0 3px 15px rgba(0, 0, 0, 0.4);
+    transition: all 0.3s ease;
+}
+
+.tank-status.blue {
+    left: -130px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 2px solid #3498db;
+}
+
+.tank-status.red {
+    right: -130px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 2px solid #e74c3c;
+}
+
+/* Add hover effect to slide panels in for better visibility */
+.tank-status.blue:hover {
+    transform: translate(60px, -50%);
+}
+
+.tank-status.red:hover {
+    transform: translate(-60px, -50%);
+}
+
+.tank-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.tank-icon {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 5px;
+    border-radius: 5px;
+}
+
+.tank-icon.blue {
+    background-color: #3498db;
+}
+
+.tank-icon.red {
+    background-color: #e74c3c;
+}
+
+.tank-stats {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    color: white;
+    font-family: 'Russo One', sans-serif;
+    font-size: 14px;
+}
+
+.power-up-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+}
+
+/* Refine the power-up icon styling to match pickup visuals */
+.power-up-item {
+    width: 40px;
+    height: 40px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.3; /* Inactive by default */
+    filter: grayscale(100%);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden; /* For icon positioning */
+}
+
+/* Hide the FontAwesome icons that don't match the game style */
+.power-up-item i {
+    opacity: 0;
+}
+
+.power-up-item.active {
+    opacity: 1;
+    filter: grayscale(0%);
+    animation: pulse-glow 1s infinite alternate;
+    box-shadow: 0 0 10px currentColor;
+}
+
+.power-up-timer {
+    position: absolute;
+    bottom: 2px;
+    width: 100%;
+    height: 3px;
+    background-color: rgba(255, 255, 255, 0.3);
+    overflow: hidden;
+}
+
+.power-up-timer-bar {
+    height: 100%;
+    background-color: white;
+    width: 100%;
+    transition: width 0.1s linear;
+}
+
+/* Power-up colors */
+.power-shield { background-color: rgba(255, 215, 0, 0.8); }
+.power-ricochet { background-color: rgba(255, 140, 0, 0.8); }
+.power-piercing { background-color: rgba(128, 0, 128, 0.8); }
+.power-speed { background-color: rgba(0, 191, 255, 0.8); }
+.power-rapid { background-color: rgba(255, 0, 0, 0.8); }
+.power-mine { background-color: rgba(139, 69, 19, 0.8); }
+.power-spread { background-color: rgba(50, 205, 50, 0.8); }
+.power-magnetic { background-color: rgba(138, 43, 226, 0.8); }
+.power-invis { background-color: rgba(192, 192, 192, 0.8); }
+.power-mega { background-color: rgba(220, 20, 60, 0.8); }
+.power-homing { background-color: rgba(255, 69, 0, 0.8); }
+.power-emp { background-color: rgba(255, 255, 0, 0.8); overflow: visible; }
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.1); }
+}
+
+@keyframes pulse-glow {
+    0% { transform: scale(1); box-shadow: 0 0 5px currentColor; }
+    100% { transform: scale(1.1); box-shadow: 0 0 15px currentColor; }
+}
+
+/* Add connector lines to make it clear which panel belongs to which side */
+.tank-status.blue::after {
+    content: '';
+    position: absolute;
+    height: 2px;
+    width: 20px;
+    background: #3498db;
+    top: 50%;
+    right: -20px;
+}
+
+.tank-status.red::after {
+    content: '';
+    position: absolute;
+    height: 2px;
+    width: 20px;
+    background: #e74c3c;
+    top: 50%;
+    left: -20px;
+}
+
+/* Individual power-up styling to match game visuals */
+.power-shield::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid white;
+    transform: translate(-50%, -50%);
+}
+
+.power-ricochet::before {
+    content: '';
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border: 2px solid white;
+    box-sizing: border-box;
+}
+
+.power-ricochet::after {
+    content: '';
+    position: absolute;
+    width: 15px;
+    height: 2px;
+    background: white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    box-shadow: 0 0 0 white, 0 0 0 white, 0 0 0 white, 0 0 0 white, 0 0 0 white, 0 0 0 white;
+}
+
+.power-piercing i {
+    transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.power-piercing::before {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 24px;
+    background-color: white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.power-speed::before {
+    content: '';
+    position: absolute;
+    width: 24px;
+    height: 2px;
+    background: white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.power-speed::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-top: 2px solid white;
+    border-right: 2px solid white;
+    top: 50%;
+    left: 60%;
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.power-rapid::before {
+    content: '';
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: white;
+    top: 50%;
+    left: 33%;
+    transform: translateY(-50%);
+}
+
+.power-rapid::after {
+    content: '';
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: white;
+    top: 50%;
+    left: 50%;
+    transform: translateY(-50%);
+    box-shadow: 6px 0 0 white;
+}
+
+.power-mine::before {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.power-mine::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 2px;
+    background: white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 0 white, 0 0 0 0 white, 0 -6px 0 0 white, 0 6px 0 0 white;
+}
+
+.power-spread::before {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 12px;
+    background: white;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, 0%);
+}
+
+.power-spread::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 2px;
+    background: white;
+    top: 30%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-30deg);
+    box-shadow: 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 0 0 0 0 white, 16px 17px 0 0 white;
+}
+
+.power-magnetic::before {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid white;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.power-magnetic::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 10px;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-top: 2px solid white;
+    border-left: 2px solid white;
+    border-right: 2px solid white;
+    border-radius: 3px 3px 0 0;
+}
+
+.power-invis {
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(192, 192, 192, 0.8),
+        rgba(192, 192, 192, 0.8) 5px,
+        rgba(220, 220, 220, 0.8) 5px,
+        rgba(220, 220, 220, 0.8) 10px
+    );
+}
+
+.power-invis::before {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 2px dotted white;
+    border-radius: 50%; 
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.power-invis::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 2px;
+    background: white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.power-mega::before {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: white;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.power-mega::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.power-homing::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 2px solid white;
+    border-radius: 50%; 
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.power-homing::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border: 2px solid white;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.power-emp::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px dashed white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: rotate 4s linear infinite;
+}
+
+.power-emp::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 2px;
+    background: white;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    box-shadow: 0 0 0 white, 0 0 0 white, 0 0 0 white, 0 0 0 white, 0 0 0 white, 0 0 0 white, 0 0 0 white, 0 0 0 white, 0 0 0 white, -7px 7px 0 0 white, 7px -7px 0 0 white;
+}
+
+@keyframes rotate {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .tank-status.blue {
+        left: 10px;
+        transform: translateY(-50%) scale(0.9);
+    }
+    
+    .tank-status.red {
+        right: 10px;
+        transform: translateY(-50%) scale(0.9);
+    }
+    
+    .tank-status.blue:hover {
+        transform: translate(5px, -50%) scale(0.9);
+    }
+    
+    .tank-status.red:hover {
+        transform: translate(-5px, -50%) scale(0.9);
+    }
+    
+    .tank-status.blue::after,
+    .tank-status.red::after {
+        display: none;
+    }
+}
+
+@media (max-width: 992px) {
+    .tank-status.blue, .tank-status.red {
+        transform: none;
+    }
+    
+    .tank-status.blue {
+        left: -110px;
+    }
+    
+    .tank-status.red {
+        right: -110px;
+    }
+    
+    .tank-status.blue:hover {
+        transform: translateX(60px);
+    }
+    
+    .tank-status.red:hover {
+        transform: translateX(-60px);
+    }
+}
+
+@media (max-width: 768px) {
+    .tank-status {
+        width: 100px;
+        padding: 8px;
+    }
+    
+    .power-up-grid {
+        grid-template-columns: repeat(1, 1fr);
+    }
+    
+    .tank-icon {
+        width: 30px;
+        height: 30px;
+    }
+    
+    .power-up-item {
+        width: 30px;
+        height: 30px;
+    }
+}
