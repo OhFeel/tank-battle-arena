@@ -2520,75 +2520,57 @@ function createDebrisEffect(x, y, size) {
 }
 
 // Update HomingMissile class to not track invisible tanks
-class HomingMissile extends Bullet {
-    constructor(x, y, angle, owner, targetTank, ricochet = false, piercing = false, isMega = false) {
-        super(x, y, angle, owner, ricochet, piercing, isMega);
-        this.targetTank = targetTank;
-        this.speed = isMega ? 4 : 5; // Mega is even slower
-        this.turnSpeed = 0.03; // How quickly it can change direction
-        this.radius = isMega ? 10 : 6; // Size based on mega status
-        this.life = 6000; // Longer life time (6 seconds)
-        this.homingDelay = 500; // Start homing after 0.5 seconds
-        this.startTime = Date.now();
-        this.smokeTrail = [];
-        this.lastSmokeTime = 0;
-        this.damage = isMega ? 2 : 1; // Mega does double damage
+HomingMissile.prototype.update = function(deltaTime) {
+    // Generate smoke trail
+    if (Date.now() - this.lastSmokeTime > 50) { // Every 50ms
+        this.smokeTrail.push({
+            x: this.x,
+            y: this.y,
+            radius: 3 + Math.random() * 2,
+            life: 1000, // 1 second life for smoke particles
+            opacity: 0.7
+        });
+        this.lastSmokeTime = Date.now();
     }
     
-    update(deltaTime) {
-        // Generate smoke trail
-        if (Date.now() - this.lastSmokeTime > 50) { // Every 50ms
-            this.smokeTrail.push({
-                x: this.x,
-                y: this.y,
-                radius: 3 + Math.random() * 2,
-                life: 1000, // 1 second life for smoke particles
-                opacity: 0.7
-            });
-            this.lastSmokeTime = Date.now();
+    // Update smoke particles
+    for (let i = this.smokeTrail.length - 1; i >= 0; i--) {
+        this.smokeTrail[i].life -= deltaTime;
+        this.smokeTrail[i].opacity = Math.min(0.7, this.smokeTrail[i].life / 1000);
+        if (this.smokeTrail[i].life <= 0) {
+            this.smokeTrail.splice(i, 1);
         }
-        
-        // Update smoke particles
-        for (let i = this.smokeTrail.length - 1; i >= 0; i--) {
-            this.smokeTrail[i].life -= deltaTime;
-            this.smokeTrail[i].opacity = Math.min(0.7, this.smokeTrail[i].life / 1000);
-            if (this.smokeTrail[i].life <= 0) {
-                this.smokeTrail.splice(i, 1);
-            }
-        }
-        
-        // Only start homing after delay and if target is visible and not respawning
-        if (Date.now() - this.startTime > this.homingDelay && 
-            this.targetTank && 
-            !this.targetTank.respawning && 
-            !this.targetTank.invisibility) {  // Check for invisibility
-            
-            // Calculate angle to target
-            const dx = (this.targetTank.x + this.targetTank.width/2) - this.x;
-            const dy = (this.targetTank.y + this.targetTank.height/2) - this.y;
-            let targetAngle = Math.atan2(dy, dx);
-            
-            // Normalize angles for comparison
-            let angleDiff = targetAngle - this.angle;
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-            
-            // Turn towards target with limited turn rate
-            if (Math.abs(angleDiff) > 0.01) {
-                if (angleDiff > 0) {
-                    this.angle += Math.min(this.turnSpeed, angleDiff);
-                } else {
-                    this.angle -= Math.min(this.turnSpeed, -angleDiff);
-                }
-            }
-        }
-        
-        // Rest of movement and collision logic using parent method
-        return super.update(deltaTime);
     }
     
-    // Rest of HomingMissile class methods remain the same
-}
+    // Only start homing after delay and if target is visible and not respawning
+    if (Date.now() - this.startTime > this.homingDelay && 
+        this.targetTank && 
+        !this.targetTank.respawning && 
+        !this.targetTank.invisibility) {  // Check for invisibility
+        
+        // Calculate angle to target
+        const dx = (this.targetTank.x + this.targetTank.width/2) - this.x;
+        const dy = (this.targetTank.y + this.targetTank.height/2) - this.y;
+        let targetAngle = Math.atan2(dy, dx);
+        
+        // Normalize angles for comparison
+        let angleDiff = targetAngle - this.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        
+        // Turn towards target with limited turn rate
+        if (Math.abs(angleDiff) > 0.01) {
+            if (angleDiff > 0) {
+                this.angle += Math.min(this.turnSpeed, angleDiff);
+            } else {
+                this.angle -= Math.min(this.turnSpeed, -angleDiff);
+            }
+        }
+    }
+    
+    // Rest of movement and collision logic using parent method
+    return Bullet.prototype.update.call(this, deltaTime);
+};
 
 // Update Bullet's update function to properly handle piercing and destructible obstacles
 Bullet.prototype.update = function(deltaTime) {
@@ -2833,7 +2815,7 @@ function showCountdown() {
 }
 
 // Update Tank class's drawPowerUpEffects method to indicate invisibility prevents homing
-function drawPowerUpEffects() {
+Tank.prototype.drawPowerUpEffects = function() {
     // Draw shield effect if active
     if (this.shield) {
         ctx.strokeStyle = "rgba(255, 255, 0, 0.7)";
@@ -2896,7 +2878,4 @@ function drawPowerUpEffects() {
         }
         ctx.stroke();
     }
-}
-
-// Replace the Tank prototype's drawPowerUpEffects with our updated version
-Tank.prototype.drawPowerUpEffects = drawPowerUpEffects;
+};
