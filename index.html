@@ -26,6 +26,7 @@
         <div id="startScreen" class="overlay">
             <h1>Tank Battle Arena</h1>
             <button id="startButton" class="game-button pulse-button">Start Game</button>
+            <button id="onlineButton" class="game-button">Online Multiplayer</button>
             <button id="settingsButton" class="game-button">Settings</button>
             <div class="controls-info">
                 <div class="player">
@@ -269,10 +270,13 @@
         });
     </script>
     
-    <!-- Load game scripts -->
-    <script src="js/fps-counter.js"></script>
-    <script src="js/victory-screen.js"></script>
+    <!-- Scripts -->
+    <script src="js/seedrandom.min.js"></script>
+    <script src="js/network.js"></script>
+    <script src="js/online-ui.js"></script>
+    <script src="js/online-game.js"></script>
     <script src="js/game.js"></script>
+    <script src="js/victory-screen.js"></script>
     <script src="js/tank-status.js"></script>
 </body>
 </html>

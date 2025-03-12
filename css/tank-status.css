@@ -452,6 +452,55 @@
     to { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
+/* Add styles for counting mines and spread shots */
+.power-up-count {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #333;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+    font-weight: bold;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+}
+
+/* Make mine icon pulse when active */
+.power-mine.active {
+    animation: mine-countdown 1s infinite alternate;
+}
+
+@keyframes mine-countdown {
+    0% { transform: scale(1); box-shadow: 0 0 5px currentColor; }
+    50% { transform: scale(1.1); box-shadow: 0 0 10px currentColor; }
+    100% { transform: scale(1); box-shadow: 0 0 15px currentColor; }
+}
+
+/* Make the bullet counters more visible */
+.power-ricochet .power-up-count,
+.power-piercing .power-up-count {
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+}
+
+/* Add a pulsing effect for countdown-based power-ups */
+.power-ricochet.active,
+.power-piercing.active,
+.power-spread.active {
+    animation: bullet-countdown 1.5s infinite alternate;
+}
+
+@keyframes bullet-countdown {
+    0% { transform: scale(1); box-shadow: 0 0 5px currentColor; }
+    50% { transform: scale(1.05); box-shadow: 0 0 10px currentColor; }
+    100% { transform: scale(1); box-shadow: 0 0 5px currentColor; }
+}
+
 /* Responsive adjustments */
 @media (max-width: 1200px) {
     .tank-status.blue {

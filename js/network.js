@@ -2,7 +2,6 @@
 window.networkManager = null;
 
 // Network manager for online multiplayer
-
 class NetworkManager {
     constructor() {
         this.socket = null;
@@ -14,7 +13,7 @@ class NetworkManager {
         this.pingInterval = null;
         this.lastPingTime = 0;
         this.latency = 0;
-        this.serverUrl = 'wss://tank-battle-arena.onrender.com';
+        this.serverUrl = 'ws://localhost:3000'; // Change to your server URL in production
         this.autoConnect = true;
         this.mapSeed = null;
         this.callbacks = {
@@ -26,12 +25,13 @@ class NetworkManager {
             onError: [],
             onMapSync: [],
             onPowerUpSpawn: [],
-            onPowerUpCollected: [], // New callback type
-            onPositionConfirmation: [], // New callback type
-            onGameStateSync: []
+            onPowerUpCollected: [],
+            onPositionConfirmation: [],
+            onGameStateSync: [],
+            onStateUpdate: [] // New callback for state updates
         };
         
-        // Add new properties for game synchronization
+        // Add properties for game synchronization
         this.initialized = false;
         this.networkReady = false;
         this.serverGameState = null;
@@ -40,9 +40,10 @@ class NetworkManager {
         this.maxSyncAttempts = 5;
         this.reconnectDelay = 2000;
         this.connectedToGame = false;
+        this.predictedMoves = []; // To store predicted moves
     }
 
-    // Connect to game server - modified to use the predefined URL
+    // Connect to game server
     connect(serverUrl = this.serverUrl) {
         return new Promise((resolve, reject) => {
             try {
@@ -88,7 +89,7 @@ class NetworkManager {
             }
         });
     }
-    
+
     // Reconnect to server
     reconnect() {
         if (this.socket && this.socket.readyState !== WebSocket.CLOSED) {
@@ -139,9 +140,22 @@ class NetworkManager {
         });
     }
     
-    // Enhanced input sending with additional state sync
+    // Send game input with prediction
     sendGameInput(input) {
         if (!this.gameId) return false;
+        
+        const timestamp = Date.now();
+        
+        // Store this input for prediction
+        this.predictedMoves.push({
+            input: input,
+            timestamp: timestamp
+        });
+        
+        // Keep only recent predictions
+        if (this.predictedMoves.length > 10) {
+            this.predictedMoves.shift();
+        }
         
         // Add player ID and game ID to input data
         return this.send({
@@ -150,76 +164,7 @@ class NetworkManager {
             playerId: this.playerId,
             playerNumber: this.playerNumber,
             input,
-            timestamp: Date.now()
-        });
-    }
-    
-    // Send full tank state for synchronization
-    syncTankState(tankState) {
-        if (!this.gameId) return false;
-        
-        return this.send({
-            type: 'sync_state',
-            gameId: this.gameId,
-            playerId: this.playerId,
-            playerNumber: this.playerNumber,
-            tankState,
-            timestamp: Date.now()
-        });
-    }
-    
-    // Enhanced version of sendMapData
-    sendMapData(obstacles, seed, tankPositions) {
-        if (!this.gameId) return false;
-        
-        return this.send({
-            type: 'map_initialized',
-            gameId: this.gameId,
-            obstacles: obstacles,
-            seed: seed,
-            tankPositions: tankPositions
-        });
-    }
-    
-    // Add method to inform server about power-up spawns
-    sendPowerUpSpawn(powerUpData) {
-        if (!this.gameId) return false;
-        
-        return this.send({
-            type: 'spawn_powerup',
-            gameId: this.gameId,
-            powerUp: powerUpData
-        });
-    }
-    
-    // New method to request initial game state from server
-    requestGameState() {
-        if (!this.gameId) return false;
-        
-        return this.send({
-            type: 'request_game_state',
-            gameId: this.gameId,
-            playerId: this.playerId
-        });
-    }
-    
-    // New method to verify game sync
-    verifyGameSync(gameData) {
-        return this.send({
-            type: 'verify_sync',
-            gameId: this.gameId,
-            playerId: this.playerId,
-            syncData: gameData
-        });
-    }
-    
-    // Add method to handle powerup collection
-    sendPowerUpCollection(gameId, playerIndex, powerUpIndex) {
-        return this.send({
-            type: 'collect_powerup',
-            gameId: gameId,
-            playerIndex: playerIndex,
-            powerUpIndex: powerUpIndex
+            timestamp: timestamp
         });
     }
     
@@ -235,33 +180,30 @@ class NetworkManager {
                     break;
                     
                 case 'game_found':
-                    // Use the enhanced handler
                     this.handleGameFound(message);
                     break;
 
-                case 'ping':
-                    this.latency = Date.now() - message.timestamp;
-                    this.send({
-                        type: 'pong',
+                case 'game_start':
+                    console.log('Game starting!');
+                    this._triggerCallbacks('onGameStart');
+                    break;
+
+                case 'state_update':
+                    this._triggerCallbacks('onStateUpdate', {
+                        tanks: message.tanks,
+                        bullets: message.bullets,
+                        powerUps: message.powerUps,
                         timestamp: message.timestamp
                     });
                     break;
                     
-                // Handle all other message types...
-                case 'map_sync':
-                    this._triggerCallbacks('onMapSync', {
-                        obstacles: message.obstacles
-                    });
-                    break;
-                    
-                case 'spawn_powerup':
+                case 'power_up_spawned':
                     this._triggerCallbacks('onPowerUpSpawn', {
                         powerUp: message.powerUp
                     });
                     break;
-                    
+
                 case 'opponent_input':
-                    // Enhanced to include player identification
                     this._triggerCallbacks('onOpponentInput', {
                         playerNumber: message.playerNumber,
                         input: message.input,
@@ -280,48 +222,17 @@ class NetworkManager {
                     // Send pong response
                     this.send({
                         type: 'pong',
-                        timestamp: Date.now()
-                    });
-                    break;
-                    
-                case 'initial_game_state':
-                    console.log('Received initial game state from server', message.gameState);
-                    this.serverGameState = message.gameState;
-                    this._triggerCallbacks('onInitialGameState', message.gameState);
-                    break;
-                
-                case 'sync_verification':
-                    console.log('Sync verification result:', message.status);
-                    if (message.status === 'success') {
-                        this.initialized = true;
-                    } else {
-                        // If sync failed, request a resync
-                        if (this.syncAttempts < this.maxSyncAttempts) {
-                            this.syncAttempts++;
-                            this.requestGameState();
-                        } else {
-                            console.error('Failed to sync game state after multiple attempts');
-                        }
-                    }
-                    break;
-                
-                case 'position_confirmation':
-                    this._triggerCallbacks('onPositionConfirmation', {
-                        position: message.position,
                         timestamp: message.timestamp
                     });
                     break;
-                
-                case 'powerup_collected':
-                    this._triggerCallbacks('onPowerUpCollected', {
-                        playerNumber: message.playerNumber,
-                        powerUpIndex: message.powerUpIndex,
-                        powerUpType: message.powerUpType
-                    });
+                    
+                case 'pong':
+                    this.latency = Date.now() - message.timestamp;
+                    console.log(`Current latency: ${this.latency}ms`);
                     break;
-                
+                    
                 default:
-                    console.log('Unknown message type:', message.type, message);
+                    console.log('Unknown message type:', message.type);
             }
         } catch (error) {
             console.error('Error parsing message:', error);
@@ -367,7 +278,7 @@ class NetworkManager {
         };
     }
     
-    // Make sure the game state data is properly handled
+    // Handle game found message
     handleGameFound(message) {
         // Store game data
         this.gameId = message.gameId;
@@ -376,35 +287,7 @@ class NetworkManager {
         this.mapSeed = message.mapSeed;
         this.connectedToGame = true;
         
-        // Set a flag to track if the game has started
-        this.gameStarted = false;
-        
-        // Store tank positions for later use
-        this.tankPositions = message.tankPositions || null;
-        
         console.log(`Game found! You are Player ${this.playerNumber} vs ${this.opponentName}, Map Seed: ${this.mapSeed}`);
-        
-        // Request initial game state from server after a short delay
-        this.requestStateTimeout = setTimeout(() => {
-            this.requestGameState();
-            console.log('Requested initial game state from server');
-            
-            // Set a safety timeout - if game doesn't start in 5 seconds, try again
-            this.gameStartTimeout = setTimeout(() => {
-                if (!this.gameStarted) {
-                    console.warn('Game not starting, retrying state request');
-                    this.requestGameState();
-                    
-                    // Last attempt - force game start after another 3 seconds
-                    setTimeout(() => {
-                        if (!this.gameStarted && window.forceStartGame) {
-                            console.warn('Forcing game start after timeouts');
-                            window.forceStartGame();
-                        }
-                    }, 3000);
-                }
-            }, 5000);
-        }, 1000);
         
         // Trigger callbacks
         this._triggerCallbacks('onGameFound', {
@@ -412,14 +295,23 @@ class NetworkManager {
             playerNumber: this.playerNumber,
             opponentName: this.opponentName,
             mapSeed: this.mapSeed,
-            tankPositions: this.tankPositions
+            tankPositions: message.tankPositions
         });
+    }
+    
+    // Reset game state
+    resetGameState() {
+        this.gameId = null;
+        this.playerNumber = null;
+        this.opponentName = null;
+        this.mapSeed = null;
+        this.connectedToGame = false;
+        this.predictedMoves = [];
     }
 }
 
 // Create global instance and make it available in two ways
 window.networkManager = new NetworkManager();
-window._realNetworkManager = window.networkManager;
 
 // Auto-connect when the page loads if enabled
 window.addEventListener('DOMContentLoaded', () => {
@@ -431,8 +323,3 @@ window.addEventListener('DOMContentLoaded', () => {
         }, 1000); // Delay connection slightly to ensure DOM is ready
     }
 });
-
-// Notify any code waiting for network manager
-if (window.onNetworkManagerReady) {
-    window.onNetworkManagerReady(window.networkManager);
-}

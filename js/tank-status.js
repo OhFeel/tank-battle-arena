@@ -21,8 +21,6 @@ class TankStatusUI {
         // Map of power-up types to maximum durations (in ms)
         this.maxDurations = {
             shield: 5000,
-            ricochet: 10000,
-            piercing: 8000,
             speedBoost: 8000,
             rapidFire: 5000,
             magneticShield: 7000,
@@ -77,30 +75,52 @@ class TankStatusUI {
         
         // Update power-ups
         this.updatePowerUpUI(powerUpsPanel, 'shield', tank.shield, tank.shieldTimer, this.maxDurations.shield);
-        this.updatePowerUpUI(powerUpsPanel, 'ricochet', tank.ricochet, tank.ricochetTimer, this.maxDurations.ricochet);
-        this.updatePowerUpUI(powerUpsPanel, 'piercing', tank.piercing, tank.piercingTimer, this.maxDurations.piercing);
+        
+        // Update ricochet and piercing with bullet counts
+        this.updatePowerUpUI(powerUpsPanel, 'ricochet', tank.ricochet && tank.ricochetBullets > 0, null, null, tank.ricochetBullets);
+        this.updatePowerUpUI(powerUpsPanel, 'piercing', tank.piercing && tank.piercingBullets > 0, null, null, tank.piercingBullets);
+        
         this.updatePowerUpUI(powerUpsPanel, 'speedBoost', tank.speedBoost, tank.speedBoostTimer, this.maxDurations.speedBoost);
         this.updatePowerUpUI(powerUpsPanel, 'rapidFire', tank.rapidFire, tank.rapidFireTimer, this.maxDurations.rapidFire);
         this.updatePowerUpUI(powerUpsPanel, 'magneticShield', tank.magneticShield, tank.magneticShieldTimer, this.maxDurations.magneticShield);
         this.updatePowerUpUI(powerUpsPanel, 'invisibility', tank.invisibility, tank.invisibilityTimer, this.maxDurations.invisibility);
         this.updatePowerUpUI(powerUpsPanel, 'empActive', tank.empActive, tank.empTimer, this.maxDurations.empActive);
         
-        // Special cases for power-ups without timers
-        this.updatePowerUpUI(powerUpsPanel, 'spreadShot', tank.spreadShot > 0, null, null);
-        this.updatePowerUpUI(powerUpsPanel, 'mines', tank.mines > 0, null, null);
+        // Special cases for power-ups without timers (update to handle mines count)
+        this.updatePowerUpUI(powerUpsPanel, 'spreadShot', tank.spreadShot > 0, null, null, tank.spreadShot);
+        this.updatePowerUpUI(powerUpsPanel, 'mines', tank.mines > 0, null, null, tank.mines);
         this.updatePowerUpUI(powerUpsPanel, 'megaBullet', tank.megaBullet, null, null);
         this.updatePowerUpUI(powerUpsPanel, 'homingMissile', tank.homingMissile, null, null);
     }
 
-    updatePowerUpUI(panel, type, isActive, currentTimer, maxDuration) {
+    updatePowerUpUI(panel, type, isActive, currentTimer, maxDuration, count = null) {
         const powerUpElement = panel.querySelector(`[data-type="${type}"]`);
         if (!powerUpElement) return;
         
         // Update active state
         if (isActive) {
             powerUpElement.classList.add('active');
+            
+            // If we have a count, show it
+            if (count !== null && count > 0) {
+                const countElement = powerUpElement.querySelector('.power-up-count');
+                if (!countElement) {
+                    const newCountElement = document.createElement('div');
+                    newCountElement.className = 'power-up-count';
+                    newCountElement.textContent = count;
+                    powerUpElement.appendChild(newCountElement);
+                } else {
+                    countElement.textContent = count;
+                }
+            }
         } else {
             powerUpElement.classList.remove('active');
+            
+            // Remove count element if it exists
+            const countElement = powerUpElement.querySelector('.power-up-count');
+            if (countElement) {
+                countElement.remove();
+            }
         }
         
         // Update timer bar if applicable
