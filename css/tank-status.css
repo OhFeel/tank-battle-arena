@@ -105,7 +105,17 @@
 
 /* Hide the FontAwesome icons that don't match the game style */
 .power-up-item i {
-    opacity: 0;
+    opacity: 1; /* Change from 0 to 1 to make icons visible */
+    font-size: 18px; /* Set appropriate size for the icons */
+    color: white; /* Make icons white for better visibility */
+    z-index: 2; /* Ensure icons appear above backgrounds */
+    position: relative; /* Ensure proper positioning */
+}
+
+/* Keep the custom shapes as background elements */
+.power-up-item::before,
+.power-up-item::after {
+    z-index: 1; /* Lower z-index so icons appear on top */
 }
 
 .power-up-item.active {

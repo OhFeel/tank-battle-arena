@@ -119,7 +119,8 @@ class Tank {
         this.invisibility = false;
         this.megaBullet = false;
         this.empActive = false;
-        this.homingMissile = false;
+        this.homingMissile = false; // Keep this for compatibility
+        this.homingMissileBullets = 0; // Add this new count-based property
         
         // Power-up timers
         this.shieldTimer = 0;
@@ -337,7 +338,7 @@ class Tank {
 
         // Store the bullet properties we'll use
         let bulletProperties = {
-            isHoming: this.homingMissile,
+            isHoming: this.homingMissileBullets > 0, // Check count instead of flag
             isSpread: this.spreadShot > 0,
             isMega: this.megaBullet,
             ricochet: this.ricochet,
@@ -375,6 +376,11 @@ class Tank {
         
         if (bulletProperties.piercing) {
             this.piercingBullets--;
+        }
+        
+        // Also decrement homing missile bullets if used
+        if (bulletProperties.isHoming) {
+            this.homingMissileBullets--;
         }
         
         // Handle homingMissile - don't reset it if it's not count-based
@@ -480,6 +486,11 @@ class Tank {
             this.piercingBullets--;
         }
         
+        // Also decrement homing missile bullets if used
+        if (props.isHoming) {
+            this.homingMissileBullets--;
+        }
+        
         // Handle homingMissile - don't reset it if it's not count-based
         // Reset megaBullet as it's single-use
         if (props.isMega) {
@@ -512,7 +523,7 @@ class Tank {
                 this.canShoot = true;
             }, this.reloadTime);
         }
-    }
+    }w
     
     // New method for combined homing + mega bullets
     shootHomingMegaBullet(props) {
@@ -1270,7 +1281,8 @@ class PowerUp {
                 
                 break;
             case POWER_UP_TYPES.HOMING_MISSILE:
-                tank.homingMissile = true; // Single-use power-up
+                // Change from setting flag to adding bullets
+                tank.homingMissileBullets += 2; // Give player 2 homing missiles
                 break;
         }
     }
@@ -2878,4 +2890,19 @@ Tank.prototype.drawPowerUpEffects = function() {
         }
         ctx.stroke();
     }
+};
+
+// Update tank status UI to display the homing missile count correctly
+TankStatusUI.prototype.updateTankStatus = function(tank, playerNum) {
+    // ...existing code...
+    
+    // Update special cases for power-ups without timers
+    this.updateSpreadShotStatus(powerUpsPanel, 'spreadShot', tank.spreadShot > 0, tank.spreadShot, 3);
+    
+    // Change this line to use homingMissileBullets instead of homingMissile
+    this.updateCountBasedPowerUp(powerUpsPanel, 'homingMissile', tank.homingMissileBullets > 0, tank.homingMissileBullets, 2);
+    
+    this.updatePowerUpUI(powerUpsPanel, 'megaBullet', tank.megaBullet, null, null);
+    
+    // ...existing code...
 };
