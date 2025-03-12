@@ -92,7 +92,7 @@ class Tank {
         this.angle = 0;
         this.baseSpeed = 2.0; // Increased base speed for smoother movement
         this.speed = this.baseSpeed;
-        this.turnSpeed = 0.04; // Slightly increased turn speed
+        this.turnSpeed = 0.1; // Slightly increased turn speed
         this.controls = controls;
         this.moving = { forward: false, backward: false, left: false, right: false };
         this.shooting = false;
