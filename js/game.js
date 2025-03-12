@@ -96,6 +96,7 @@ class Tank {
         this.controls = controls;
         this.moving = { forward: false, backward: false, left: false, right: false };
         this.shooting = false;
+        this.layingMine = false; // New property for mine laying
         this.lives = 3;
         this.maxLives = 3;
         this.ammo = 5;
@@ -219,8 +220,8 @@ class Tank {
             this.shoot();
         }
         
-        // Check for mine laying
-        if (this.shooting && this.mines > 0) {
+        // Check for mine laying (now separate from shooting)
+        if (this.layingMine && this.mines > 0) {
             this.layMine();
         }
         
@@ -293,6 +294,10 @@ class Tank {
     
     layMine() {
         if (this.mines <= 0) return;
+        
+        // Don't allow placing mines too frequently
+        if (this.lastMinePlaced && Date.now() - this.lastMinePlaced < 1000) return;
+        this.lastMinePlaced = Date.now();
         
         // Check if there's already a mine nearby
         const mineDistance = 50;
@@ -1717,7 +1722,8 @@ function initGame() {
             backward: 's',
             left: 'a',
             right: 'd',
-            shoot: ' '
+            shoot: ' ',
+            mine: 'e'  // E key for player 1 mine laying
         }, 1),
         
         new Tank(p2Spawn.x, p2Spawn.y, "#e74c3c", {
@@ -1725,7 +1731,8 @@ function initGame() {
             backward: 'ArrowDown',
             left: 'ArrowLeft',
             right: 'ArrowRight',
-            shoot: '/'
+            shoot: '/',
+            mine: '.'  // Period key for player 2 mine laying
         }, 2)
     ];
     
@@ -2435,7 +2442,7 @@ try {
 /* Update the handleKeyDown function for better input handling */
 function handleKeyDown(e) {
     // Prevent default actions for game keys
-    if (['w', 's', 'a', 'd', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '/'].includes(e.key)) {
+    if (['w', 's', 'a', 'd', ' ', 'e', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '/', '.'].includes(e.key)) {
         e.preventDefault();
     }
     
@@ -2466,6 +2473,9 @@ function handleKeyDown(e) {
         if (e.key === tank.controls.shoot) {
             tank.shooting = true;
         }
+        if (e.key === tank.controls.mine) {  // New control for mine laying
+            tank.layingMine = true;
+        }
     }
 }
 
@@ -2481,5 +2491,6 @@ function handleKeyUp(e) {
         if (e.key === tank.controls.left) tank.moving.left = false;
         if (e.key === tank.controls.right) tank.moving.right = false;
         if (e.key === tank.controls.shoot) tank.shooting = false;
+        if (e.key === tank.controls.mine) tank.layingMine = false;  // New control for mine laying
     }
 }

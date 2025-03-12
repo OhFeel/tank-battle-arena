@@ -82,6 +82,9 @@ class TankStatusUI {
         this.updateCountBasedPowerUp(powerUpsPanel, 'ricochet', tank.ricochetBullets > 0, tank.ricochetBullets, 3);
         this.updateCountBasedPowerUp(powerUpsPanel, 'piercing', tank.piercingBullets > 0, tank.piercingBullets, 3);
         
+        // Update mines with colored indicator instead of number
+        this.updateMineStatus(powerUpsPanel, 'mines', tank.mines > 0, tank.mines);
+        
         this.updatePowerUpUI(powerUpsPanel, 'speedBoost', tank.speedBoost, tank.speedBoostTimer, this.maxDurations.speedBoost);
         this.updatePowerUpUI(powerUpsPanel, 'rapidFire', tank.rapidFire, tank.rapidFireTimer, this.maxDurations.rapidFire);
         this.updatePowerUpUI(powerUpsPanel, 'magneticShield', tank.magneticShield, tank.magneticShieldTimer, this.maxDurations.magneticShield);
@@ -89,8 +92,7 @@ class TankStatusUI {
         this.updatePowerUpUI(powerUpsPanel, 'empActive', tank.empActive, tank.empTimer, this.maxDurations.empActive);
         
         // Special cases for power-ups without timers
-        this.updateCountBasedPowerUp(powerUpsPanel, 'spreadShot', tank.spreadShot > 0, tank.spreadShot, 3);
-        this.updateCountBasedPowerUp(powerUpsPanel, 'mines', tank.mines > 0, tank.mines, 3);
+        this.updateSpreadShotStatus(powerUpsPanel, 'spreadShot', tank.spreadShot > 0, tank.spreadShot, 3);
         
         this.updatePowerUpUI(powerUpsPanel, 'megaBullet', tank.megaBullet, null, null);
         this.updatePowerUpUI(powerUpsPanel, 'homingMissile', tank.homingMissile, null, null);
@@ -160,6 +162,109 @@ class TankStatusUI {
             }
             
             countElement.textContent = count;
+        } else {
+            powerUpElement.classList.remove('active');
+            
+            // Remove progress bar if it exists
+            const progressContainer = powerUpElement.querySelector('.count-progress-container');
+            if (progressContainer) {
+                progressContainer.remove();
+            }
+            
+            // Remove count element if it exists
+            const countElement = powerUpElement.querySelector('.power-up-count');
+            if (countElement) {
+                countElement.remove();
+            }
+        }
+    }
+
+    // New method for mine status that uses color intensity instead of count number
+    updateMineStatus(panel, type, isActive, count) {
+        const powerUpElement = panel.querySelector(`[data-type="${type}"]`);
+        if (!powerUpElement) return;
+        
+        // Update active state
+        if (isActive && count > 0) {
+            powerUpElement.classList.add('active');
+            
+            // Set opacity based on count (brighter = more mines)
+            const intensityFactor = Math.min(1.0, 0.4 + (count / 3) * 0.6);
+            powerUpElement.style.opacity = intensityFactor;
+            
+            // Create or update progress bar
+            let progressBar = powerUpElement.querySelector('.count-progress-bar');
+            if (!progressBar) {
+                // Create the progress bar structure if it doesn't exist
+                const progressContainer = document.createElement('div');
+                progressContainer.className = 'count-progress-container';
+                
+                progressBar = document.createElement('div');
+                progressBar.className = 'count-progress-bar';
+                
+                progressContainer.appendChild(progressBar);
+                powerUpElement.appendChild(progressContainer);
+            }
+            
+            // Update the progress bar width
+            const percentage = (count / 3) * 100; // Assuming max is 3 mines
+            progressBar.style.width = `${percentage}%`;
+            
+            // Remove any count element if it exists
+            const countElement = powerUpElement.querySelector('.power-up-count');
+            if (countElement) {
+                countElement.remove();
+            }
+        } else {
+            powerUpElement.classList.remove('active');
+            powerUpElement.style.opacity = '0.3'; // Reset to default inactive opacity
+            
+            // Remove progress bar if it exists
+            const progressContainer = powerUpElement.querySelector('.count-progress-container');
+            if (progressContainer) {
+                progressContainer.remove();
+            }
+            
+            // Remove count element if it exists
+            const countElement = powerUpElement.querySelector('.power-up-count');
+            if (countElement) {
+                countElement.remove();
+            }
+        }
+    }
+
+    // New method for spread shots that hides the number
+    updateSpreadShotStatus(panel, type, isActive, count, maxCount) {
+        const powerUpElement = panel.querySelector(`[data-type="${type}"]`);
+        if (!powerUpElement) return;
+        
+        // Update active state
+        if (isActive && count > 0) {
+            powerUpElement.classList.add('active');
+            
+            // Create or update progress bar
+            let progressBar = powerUpElement.querySelector('.count-progress-bar');
+            if (!progressBar) {
+                // Create the progress bar structure if it doesn't exist
+                const progressContainer = document.createElement('div');
+                progressContainer.className = 'count-progress-container';
+                
+                progressBar = document.createElement('div');
+                progressBar.className = 'count-progress-bar';
+                
+                progressContainer.appendChild(progressBar);
+                powerUpElement.appendChild(progressContainer);
+            }
+            
+            // Update the progress bar width
+            const percentage = (count / maxCount) * 100;
+            progressBar.style.width = `${percentage}%`;
+            
+            // Remove any count element if it exists
+            const countElement = powerUpElement.querySelector('.power-up-count');
+            if (countElement) {
+                countElement.remove();
+            }
         } else {
             powerUpElement.classList.remove('active');
             
