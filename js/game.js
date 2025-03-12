@@ -122,13 +122,15 @@ class Tank {
         
         // Power-up timers
         this.shieldTimer = 0;
-        this.ricochetTimer = 0;
-        this.piercingTimer = 0;
         this.speedBoostTimer = 0;
         this.rapidFireTimer = 0;
         this.magneticShieldTimer = 0;
         this.invisibilityTimer = 0;
         this.empTimer = 0;
+        
+        // Count-based power-ups (instead of timer-based)
+        this.ricochetBullets = 0;
+        this.piercingBullets = 0;
         
         // Mine layer specific properties
         this.mines = 0;
@@ -235,14 +237,11 @@ class Tank {
             this.shieldTimer -= deltaTime;
             if (this.shieldTimer <= 0) this.shield = false;
         }
-        if (this.ricochet) {
-            this.ricochetTimer -= deltaTime;
-            if (this.ricochetTimer <= 0) this.ricochet = false;
-        }
-        if (this.piercing) {
-            this.piercingTimer -= deltaTime;
-            if (this.piercingTimer <= 0) this.piercing = false;
-        }
+        
+        // Ricochet and piercing are now count-based, not timer-based
+        this.ricochet = this.ricochetBullets > 0;
+        this.piercing = this.piercingBullets > 0;
+        
         if (this.speedBoost) {
             this.speedBoostTimer -= deltaTime;
             if (this.speedBoostTimer <= 0) this.speedBoost = false;
@@ -314,8 +313,12 @@ class Tank {
             y: mineY,
             radius: 8,
             owner: this.playerNumber,
-            armTime: 1000, // 1 second before it arms
-            isArmed: false
+            armTime: 5000, // 5 seconds before explosion
+            isArmed: true,  // Mines are now always armed
+            blastRadius: 80, // Blast radius for the explosion
+            blinkInterval: null,
+            blinkRate: 500, // Start slow
+            blinkState: false
         });
         
         this.mines--;
@@ -336,32 +339,13 @@ class Tank {
             piercing: this.piercing
         };
         
-        // Handle the special bullet types (prioritize in this order)
+        // Handle the special bullet types with proper stacking
         if (bulletProperties.isSpread) {
             this.shootSpread(bulletProperties);
             this.spreadShot--;
             return;
         }
         
-        if (bulletProperties.isHoming && bulletProperties.isMega) {
-            this.shootHomingMegaBullet(bulletProperties);
-            this.homingMissile = false;
-            this.megaBullet = false;
-            return;
-        }
-        
-        if (bulletProperties.isHoming) {
-            this.shootHomingMissile(bulletProperties);
-            this.homingMissile = false;
-            return;
-        }
-        
-        if (bulletProperties.isMega) {
-            this.shootMegaBullet(bulletProperties);
-            this.megaBullet = false;
-            return;
-        }
-
         // Create regular bullet with any remaining properties
         let bullet = new Bullet(
             this.x + this.width / 2 + Math.cos(this.angle) * this.width,
@@ -369,13 +353,31 @@ class Tank {
             this.angle,
             this.playerNumber,
             bulletProperties.ricochet,
-            bulletProperties.piercing
+            bulletProperties.piercing,
+            bulletProperties.isMega,
+            bulletProperties.isHoming ? tanks.find(tank => tank.playerNumber !== this.playerNumber) : null
         );
         bullets.push(bullet);
 
         // Update ammo and stats
         this.ammo--;
         this.canShoot = false;
+        
+        // Decrement ricochet and piercing bullet counts if they were used
+        if (bulletProperties.ricochet) {
+            this.ricochetBullets--;
+        }
+        
+        if (bulletProperties.piercing) {
+            this.piercingBullets--;
+        }
+        
+        // Handle homingMissile - don't reset it if it's not count-based
+        // Reset megaBullet as it's single-use
+        if (bulletProperties.isMega) {
+            this.megaBullet = false;
+        }
+        
         if (this.playerNumber === 1) {
             stats.p1ShotsFired++;
         } else {
@@ -416,91 +418,69 @@ class Tank {
         
         // Create 3 bullets in a spread pattern
         const spreadAngle = Math.PI / 12; // 15 degrees
+        const angles = [this.angle - spreadAngle, this.angle, this.angle + spreadAngle];
         
-        // Left bullet
-        if (props.isHoming) {
-            const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
-            if (targetTank) {
-                bullets.push(new HomingMissile(
-                    this.x + this.width / 2 + Math.cos(this.angle - spreadAngle) * this.width,
-                    this.y + this.height / 2 + Math.sin(this.angle - spreadAngle) * this.height,
-                    this.angle - spreadAngle,
+        // Create all three bullets with the same properties
+        for (let angle of angles) {
+            let bulletProps = {
+                x: this.x + this.width / 2 + Math.cos(angle) * this.width,
+                y: this.y + this.height / 2 + Math.sin(angle) * this.height,
+                angle: angle,
+                owner: this.playerNumber,
+                ricochet: props.ricochet,
+                piercing: props.piercing,
+                isMega: props.isMega,
+                isHoming: props.isHoming
+            };
+            
+            // Create the appropriate bullet type with all stacked properties
+            if (props.isHoming) {
+                const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
+                if (targetTank) {
+                    bullets.push(new HomingMissile(
+                        bulletProps.x,
+                        bulletProps.y,
+                        bulletProps.angle,
+                        this.playerNumber,
+                        targetTank,
+                        bulletProps.ricochet,
+                        bulletProps.piercing,
+                        bulletProps.isMega
+                    ));
+                }
+            } else {
+                bullets.push(new Bullet(
+                    bulletProps.x,
+                    bulletProps.y,
+                    bulletProps.angle,
                     this.playerNumber,
-                    targetTank,
-                    props.ricochet,
-                    props.piercing,
-                    props.isMega
+                    bulletProps.ricochet,
+                    bulletProps.piercing,
+                    bulletProps.isMega
                 ));
             }
-        } else {
-            bullets.push(new Bullet(
-                this.x + this.width / 2 + Math.cos(this.angle - spreadAngle) * this.width,
-                this.y + this.height / 2 + Math.sin(this.angle - spreadAngle) * this.height,
-                this.angle - spreadAngle,
-                this.playerNumber,
-                props.ricochet,
-                props.piercing,
-                props.isMega
-            ));
         }
         
-        // Center bullet
-        if (props.isHoming) {
-            const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
-            if (targetTank) {
-                bullets.push(new HomingMissile(
-                    this.x + this.width / 2 + Math.cos(this.angle) * this.width,
-                    this.y + this.height / 2 + Math.sin(this.angle) * this.height,
-                    this.angle,
-                    this.playerNumber,
-                    targetTank,
-                    props.ricochet,
-                    props.piercing,
-                    props.isMega
-                ));
-            }
-        } else {
-            bullets.push(new Bullet(
-                this.x + this.width / 2 + Math.cos(this.angle) * this.width,
-                this.y + this.height / 2 + Math.sin(this.angle) * this.height,
-                this.angle,
-                this.playerNumber,
-                props.ricochet,
-                props.piercing,
-                props.isMega
-            ));
-        }
-        
-        // Right bullet
-        if (props.isHoming) {
-            const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
-            if (targetTank) {
-                bullets.push(new HomingMissile(
-                    this.x + this.width / 2 + Math.cos(this.angle + spreadAngle) * this.width,
-                    this.y + this.height / 2 + Math.sin(this.angle + spreadAngle) * this.height,
-                    this.angle + spreadAngle,
-                    this.playerNumber,
-                    targetTank,
-                    props.ricochet,
-                    props.piercing,
-                    props.isMega
-                ));
-            }
-        } else {
-            bullets.push(new Bullet(
-                this.x + this.width / 2 + Math.cos(this.angle + spreadAngle) * this.width,
-                this.y + this.height / 2 + Math.sin(this.angle + spreadAngle) * this.height,
-                this.angle + spreadAngle,
-                this.playerNumber,
-                props.ricochet,
-                props.piercing,
-                props.isMega
-            ));
-        }
-
         // Update ammo and stats
         this.ammo--;
         this.canShoot = false;
+        
+        // Decrement ricochet and piercing bullet counts if they were used
+        // Only decrement once even though three bullets were fired
+        if (props.ricochet) {
+            this.ricochetBullets--;
+        }
+        
+        if (props.piercing) {
+            this.piercingBullets--;
+        }
+        
+        // Handle homingMissile - don't reset it if it's not count-based
+        // Reset megaBullet as it's single-use
+        if (props.isMega) {
+            this.megaBullet = false;
+        }
+        
         if (this.playerNumber === 1) {
             stats.p1ShotsFired += 3;
         } else {
@@ -511,96 +491,22 @@ class Tank {
         playSound(shootSound);
 
         // Start reload timer
-        setTimeout(() => {
-            if (this.ammo < this.maxAmmo) {
-                this.ammo++;
-            }
-            this.canShoot = true;
-        }, this.reloadTime);
-    }
-    
-    shootMegaBullet(props) {
-        if (this.ammo <= 0 || !this.canShoot) return;
-        
-        // Create a mega bullet
-        let bullet = new Bullet(
-            this.x + this.width / 2 + Math.cos(this.angle) * this.width,
-            this.y + this.height / 2 + Math.sin(this.angle) * this.height,
-            this.angle,
-            this.playerNumber,
-            props.ricochet,
-            props.piercing,
-            true // is mega bullet
-        );
-        bullets.push(bullet);
-
-        // Update ammo and stats
-        this.ammo--;
-        this.canShoot = false;
-        if (this.playerNumber === 1) {
-            stats.p1ShotsFired++;
+        if (this.rapidFire) {
+            this.canShoot = true; // No delay between shots for rapid fire
+            
+            setTimeout(() => {
+                if (this.ammo < this.maxAmmo) {
+                    this.ammo++;
+                }
+            }, this.reloadTime / 2);
         } else {
-            stats.p2ShotsFired++;
+            setTimeout(() => {
+                if (this.ammo < this.maxAmmo) {
+                    this.ammo++;
+                }
+                this.canShoot = true;
+            }, this.reloadTime);
         }
-
-        // Play sound effect with more intensity but capped at 1.0 max volume
-        const boostedVolume = Math.min(1.0, sfxVolume * 1.5);
-        shootSound.volume = boostedVolume;
-        playSound(shootSound);
-        shootSound.volume = sfxVolume;
-
-        // Start reload timer
-        setTimeout(() => {
-            if (this.ammo < this.maxAmmo) {
-                this.ammo++;
-            }
-            this.canShoot = true;
-        }, this.reloadTime);
-    }
-
-    shootHomingMissile(props) {
-        if (this.ammo <= 0 || !this.canShoot) return;
-        
-        // Find the target tank (opponent)
-        const targetTank = tanks.find(tank => tank.playerNumber !== this.playerNumber);
-        
-        if (!targetTank) return;
-        
-        // Create a homing missile with other properties
-        let homingMissile = new HomingMissile(
-            this.x + this.width / 2 + Math.cos(this.angle) * this.width,
-            this.y + this.height / 2 + Math.sin(this.angle) * this.height,
-            this.angle,
-            this.playerNumber,
-            targetTank,
-            props.ricochet,
-            props.piercing,
-            props.isMega
-        );
-        bullets.push(homingMissile);
-
-        // Update ammo and stats
-        this.ammo--;
-        this.canShoot = false;
-        if (this.playerNumber === 1) {
-            stats.p1ShotsFired++;
-        } else {
-            stats.p2ShotsFired++;
-        }
-
-        // Play sound effect with more intensity but capped at 1.0 max volume
-        const boostedVolume = Math.min(1.0, sfxVolume * 1.5);
-        shootSound.volume = boostedVolume;
-        playSound(shootSound);
-        shootSound.volume = sfxVolume;
-
-        // Start reload timer
-        setTimeout(() => {
-            if (this.ammo < this.maxAmmo) {
-                this.ammo++;
-            }
-            this.canShoot = true;
-        }, this.reloadTime);
     }
     
     // New method for combined homing + mega bullets
@@ -835,7 +741,7 @@ class Tank {
 
 // Bullet class
 class Bullet {
-    constructor(x, y, angle, owner, ricochet = false, piercing = false, isMega = false) {
+    constructor(x, y, angle, owner, ricochet = false, piercing = false, isMega = false, targetTank = null) {
         this.x = x;
         this.y = y;
         this.radius = isMega ? 8 : 4; // Mega bullets are bigger
@@ -845,14 +751,71 @@ class Bullet {
         this.ricochet = ricochet;
         this.piercing = piercing;
         this.isMega = isMega;
+        this.targetTank = targetTank; // For homing functionality (optional)
         this.bounces = 0;
         this.maxBounces = 3;
         this.life = 3000; // 3 seconds max life
         this.damage = isMega ? 2 : 1; // Mega bullets do double damage
+        
+        // Homing properties (if target provided)
+        if (targetTank) {
+            this.turnSpeed = 0.03;
+            this.homingDelay = 500;
+            this.startTime = Date.now();
+            this.smokeTrail = [];
+            this.lastSmokeTime = 0;
+        }
     }
 
     // ... Rest of Bullet class methods remain the same
     update(deltaTime) {
+        // Add homing behavior if we have a target tank
+        if (this.targetTank && Date.now() - this.startTime > this.homingDelay && !this.targetTank.respawning) {
+            // Generate smoke trail for homing bullets
+            if (Date.now() - this.lastSmokeTime > 50) { // Every 50ms
+                if (!this.smokeTrail) this.smokeTrail = [];
+                
+                this.smokeTrail.push({
+                    x: this.x,
+                    y: this.y,
+                    radius: 3 + Math.random() * 2,
+                    life: 1000, // 1 second life for smoke particles
+                    opacity: 0.7
+                });
+                this.lastSmokeTime = Date.now();
+            }
+            
+            // Update smoke particles
+            if (this.smokeTrail) {
+                for (let i = this.smokeTrail.length - 1; i >= 0; i--) {
+                    this.smokeTrail[i].life -= deltaTime;
+                    this.smokeTrail[i].opacity = Math.min(0.7, this.smokeTrail[i].life / 1000);
+                    if (this.smokeTrail[i].life <= 0) {
+                        this.smokeTrail.splice(i, 1);
+                    }
+                }
+            }
+            
+            // Calculate angle to target
+            const dx = (this.targetTank.x + this.targetTank.width/2) - this.x;
+            const dy = (this.targetTank.y + this.targetTank.height/2) - this.y;
+            let targetAngle = Math.atan2(dy, dx);
+            
+            // Normalize angles for comparison
+            let angleDiff = targetAngle - this.angle;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+            
+            // Turn towards target with limited turn rate
+            if (Math.abs(angleDiff) > 0.01) {
+                if (angleDiff > 0) {
+                    this.angle += Math.min(this.turnSpeed, angleDiff);
+                } else {
+                    this.angle -= Math.min(this.turnSpeed, -angleDiff);
+                }
+            }
+        }
+        
         // Calculate next position
         let newX = this.x + Math.cos(this.angle) * this.speed;
         let newY = this.y + Math.sin(this.angle) * this.speed;
@@ -934,7 +897,17 @@ class Bullet {
                     playSound(bounceSound);
                     bounced = true;
                     break; // Exit the loop once we've handled a collision
-                } else if (!this.piercing) {
+                } else if (this.piercing) {
+                    // Piercing bullets can destroy destructible obstacles
+                    if (obstacle.destructible) {
+                        if (obstacle.hit()) {
+                            // Create debris effect at the obstacle position
+                            createDebrisEffect(obstacle.x + obstacle.width/2, obstacle.y + obstacle.height/2, obstacle.width);
+                            obstacles.splice(obstacles.indexOf(obstacle), 1);
+                        }
+                    }
+                    // Continue through the obstacle
+                } else {
                     return true; // Remove bullet
                 }
             }
@@ -1155,12 +1128,14 @@ class HomingMissile extends Bullet {
 
 // Obstacle class
 class Obstacle {
-    constructor(x, y, width, height) {
+    constructor(x, y, width, height, destructible = false) {
         this.x = x;
         this.y = y;
         this.width = width;
         this.height = height;
-        this.color = "#555";
+        this.color = destructible ? "#8B4513" : "#555"; // Brown for destructible
+        this.destructible = destructible;
+        this.health = destructible ? 1 : 999; // Destructible walls can be destroyed
     }
 
     draw() {
@@ -1172,15 +1147,43 @@ class Obstacle {
         ctx.lineWidth = 2;
         ctx.strokeRect(this.x, this.y, this.width, this.height);
         
-        // Inner detail
-        ctx.beginPath();
-        ctx.moveTo(this.x, this.y);
-        ctx.lineTo(this.x + this.width, this.y + this.height);
-        ctx.moveTo(this.x + this.width, this.y);
-        ctx.lineTo(this.x, this.y + this.height);
-        ctx.strokeStyle = "#444";
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        if (this.destructible) {
+            // Add wood-like texture for destructible obstacles
+            ctx.fillStyle = "#6D4C41";
+            
+            // Draw horizontal planks
+            const plankHeight = 8;
+            const numPlanks = Math.floor(this.height / plankHeight);
+            
+            for (let i = 0; i < numPlanks; i++) {
+                if (i % 2 === 0) {
+                    ctx.fillRect(
+                        this.x, 
+                        this.y + i * plankHeight, 
+                        this.width, 
+                        plankHeight - 2
+                    );
+                }
+            }
+        } else {
+            // Inner detail for regular obstacles
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.x + this.width, this.y + this.height);
+            ctx.moveTo(this.x + this.width, this.y);
+            ctx.lineTo(this.x, this.y + this.height);
+            ctx.strokeStyle = "#444";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    }
+    
+    hit() {
+        if (this.destructible) {
+            this.health--;
+            return this.health <= 0;
+        }
+        return false;
     }
 }
 
@@ -1236,12 +1239,12 @@ class PowerUp {
                 tank.shieldTimer = 5000; // 5 seconds
                 break;
             case POWER_UP_TYPES.RICOCHET:
-                tank.ricochet = true;
-                tank.ricochetTimer = 10000; // 10 seconds
+                // Add 3 ricochet bullets instead of setting a timer
+                tank.ricochetBullets += 3;
                 break;
             case POWER_UP_TYPES.PIERCING:
-                tank.piercing = true;
-                tank.piercingTimer = 8000; // 8 seconds
+                // Add 3 piercing bullets instead of setting a timer
+                tank.piercingBullets += 3;
                 break;
             case POWER_UP_TYPES.SPEED_BOOST:
                 tank.speedBoost = true;
@@ -1252,10 +1255,10 @@ class PowerUp {
                 tank.rapidFireTimer = 5000; // 5 seconds
                 break;
             case POWER_UP_TYPES.MINE_LAYER:
-                tank.mines = 3; // Give 3 mines
+                tank.mines += 3; // Give 3 mines
                 break;
             case POWER_UP_TYPES.SPREAD_SHOT:
-                tank.spreadShot = 3; // Next 3 shots will be spread shots
+                tank.spreadShot += 3; // Add 3 spread shots
                 break;
             case POWER_UP_TYPES.MAGNETIC_SHIELD:
                 tank.magneticShield = true;
@@ -1266,7 +1269,7 @@ class PowerUp {
                 tank.invisibilityTimer = 5000; // 5 seconds
                 break;
             case POWER_UP_TYPES.MEGA_BULLET:
-                tank.megaBullet = true;
+                tank.megaBullet = true; // Single-use power-up
                 break;
             case POWER_UP_TYPES.TELEPORT:
                 tank.teleport();
@@ -1280,7 +1283,7 @@ class PowerUp {
                 
                 break;
             case POWER_UP_TYPES.HOMING_MISSILE:
-                tank.homingMissile = true;
+                tank.homingMissile = true; // Single-use power-up
                 break;
         }
     }
@@ -1649,6 +1652,9 @@ function createObstacles() {
         const width = TILE_SIZE * (1 + Math.floor(Math.random() * 2));
         const height = TILE_SIZE * (1 + Math.floor(Math.random() * 2));
         
+        // Determine if this obstacle will be destructible (25% chance)
+        const isDestructible = Math.random() < 0.25;
+        
         // Find a valid position
         let x, y, validPosition = false;
         
@@ -1671,7 +1677,7 @@ function createObstacles() {
         }
         
         if (validPosition) {
-            obstacles.push(new Obstacle(x, y, width, height));
+            obstacles.push(new Obstacle(x, y, width, height, isDestructible));
         }
     }
 }
@@ -1864,73 +1870,117 @@ function gameLoop(timestamp) {
     for (let i = mines.length - 1; i >= 0; i--) {
         let mine = mines[i];
         
-        // Check if mine is armed
-        if (!mine.isArmed) {
+        // Update mine countdown
+        if (mine.armTime > 0) {
             mine.armTime -= deltaTime;
+            
+            // Speed up blinking as time decreases
+            if (mine.armTime < 1000) {
+                mine.blinkRate = 100; // Fast blinking in last second
+            } else if (mine.armTime < 3000) {
+                mine.blinkRate = 250; // Medium blinking in last 3 seconds
+            }
+            
+            // Handle blinking
+            if (!mine.blinkInterval || mine.armTime <= 0) {
+                mine.blinkState = !mine.blinkState;
+                mine.nextBlink = timestamp + mine.blinkRate;
+            } else if (timestamp >= mine.nextBlink) {
+                mine.blinkState = !mine.blinkState;
+                mine.nextBlink = timestamp + mine.blinkRate;
+            }
+            
+            // Check if time's up - explode the mine
             if (mine.armTime <= 0) {
-                mine.isArmed = true;
+                // Create explosion effect
+                createExplosionEffect(
+                    mine.x,
+                    mine.y,
+                    mine.blastRadius * 2, // Double size for visual effect
+                    "#ff3300",
+                    40,
+                    true
+                );
+                
+                // Check if any tanks are in blast radius
+                for (let tank of tanks) {
+                    if (tank.respawning) continue;
+                    
+                    const dx = tank.x + tank.width/2 - mine.x;
+                    const dy = tank.y + tank.height/2 - mine.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < mine.blastRadius) {
+                        if (tank.hit()) {
+                            // Tank was destroyed
+                            gameState.over = true;
+                            showGameOverScreen(tank.playerNumber === 1 ? 2 : 1);
+                        }
+                    }
+                }
+                
+                // Check if any destructible obstacles are in blast radius
+                for (let j = obstacles.length - 1; j >= 0; j--) {
+                    const obstacle = obstacles[j];
+                    if (!obstacle.destructible) continue;
+                    
+                    // Check if obstacle center is within blast radius
+                    const obstacleX = obstacle.x + obstacle.width/2;
+                    const obstacleY = obstacle.y + obstacle.height/2;
+                    const dx = obstacleX - mine.x;
+                    const dy = obstacleY - mine.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < mine.blastRadius) {
+                        if (obstacle.hit()) {
+                            // Create debris effect at the obstacle position
+                            createDebrisEffect(obstacleX, obstacleY, obstacle.width);
+                            obstacles.splice(j, 1);
+                        }
+                    }
+                }
+                
+                // Play explosion sound
+                playSound(explosionSound);
+                
+                // Remove the mine
+                mines.splice(i, 1);
+                continue;
             }
         }
         
         // Draw mine
         ctx.beginPath();
         ctx.arc(mine.x, mine.y, mine.radius, 0, Math.PI * 2);
-        ctx.fillStyle = mine.isArmed ? "rgba(255, 0, 0, 0.7)" : "rgba(100, 100, 100, 0.7)";
+        
+        // Alternate colors for blinking effect
+        if (mine.blinkState) {
+            ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
+        } else {
+            ctx.fillStyle = "rgba(100, 0, 0, 0.8)";
+        }
         ctx.fill();
         
-        // Add spikes if armed
-        if (mine.isArmed) {
-            for (let j = 0; j < 8; j++) {
-                const angle = (j / 8) * Math.PI * 2;
-                ctx.beginPath();
-                ctx.moveTo(mine.x + Math.cos(angle) * mine.radius,
-                          mine.y + Math.sin(angle) * mine.radius);
-                ctx.lineTo(mine.x + Math.cos(angle) * (mine.radius + 4),
-                          mine.y + Math.sin(angle) * (mine.radius + 4));
-                ctx.strokeStyle = "rgba(255, 0, 0, 0.8)";
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            }
+        // Add spikes
+        for (let j = 0; j < 8; j++) {
+            const angle = (j / 8) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.moveTo(mine.x + Math.cos(angle) * mine.radius,
+                      mine.y + Math.sin(angle) * mine.radius);
+            ctx.lineTo(mine.x + Math.cos(angle) * (mine.radius + 4),
+                      mine.y + Math.sin(angle) * (mine.radius + 4));
+            ctx.strokeStyle = mine.blinkState ? "rgba(255, 0, 0, 0.8)" : "rgba(100, 0, 0, 0.8)";
+            ctx.lineWidth = 2;
+            ctx.stroke();
         }
         
-        // Check mine collision with tanks
-        for (let tank of tanks) {
-            if (tank.respawning) continue;
-            if (!mine.isArmed) continue; // Only armed mines explode
-            
-            // Skip if mine belongs to this tank
-            if (mine.owner === tank.playerNumber) continue;
-            
-            const dx = tank.x + tank.width/2 - mine.x;
-            const dy = tank.y + tank.height/2 - mine.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < mine.radius + tank.width/2) {
-                // Mine exploded!
-                if (tank.hit()) {
-                    // Tank was destroyed
-                    gameState.over = true;
-                    showGameOverScreen(tank.playerNumber === 1 ? 2 : 1);
-                }
-                
-                // Create mine explosion
-                createExplosionEffect(
-                    mine.x,
-                    mine.y,
-                    mine.radius * 5, // Larger radius for mine explosion
-                    "#ff3300",
-                    30,
-                    true
-                );
-                
-                // Remove mine
-                mines.splice(i, 1);
-                
-                // Play explosion sound
-                playSound(explosionSound);
-                
-                break;
-            }
+        // Display countdown timer above mine
+        if (mine.armTime > 0) {
+            const secondsLeft = Math.ceil(mine.armTime / 1000);
+            ctx.fillStyle = "white";
+            ctx.font = "12px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText(secondsLeft, mine.x, mine.y - 15);
         }
     }
     

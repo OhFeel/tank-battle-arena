@@ -69,16 +69,18 @@ class TankStatusUI {
         
         if (!statusPanel || !livesElement || !ammoElement || !powerUpsPanel) return;
         
-        // Update lives and ammo
+        // Update lives
         livesElement.textContent = tank.lives;
-        ammoElement.textContent = tank.ammo;
+        
+        // Update ammo with progress bar instead of number
+        this.updateAmmoDisplay(ammoElement, tank.ammo, tank.maxAmmo);
         
         // Update power-ups
         this.updatePowerUpUI(powerUpsPanel, 'shield', tank.shield, tank.shieldTimer, this.maxDurations.shield);
         
-        // Update ricochet and piercing with bullet counts
-        this.updatePowerUpUI(powerUpsPanel, 'ricochet', tank.ricochet && tank.ricochetBullets > 0, null, null, tank.ricochetBullets);
-        this.updatePowerUpUI(powerUpsPanel, 'piercing', tank.piercing && tank.piercingBullets > 0, null, null, tank.piercingBullets);
+        // Update count-based power-ups with progress bars
+        this.updateCountBasedPowerUp(powerUpsPanel, 'ricochet', tank.ricochetBullets > 0, tank.ricochetBullets, 3);
+        this.updateCountBasedPowerUp(powerUpsPanel, 'piercing', tank.piercingBullets > 0, tank.piercingBullets, 3);
         
         this.updatePowerUpUI(powerUpsPanel, 'speedBoost', tank.speedBoost, tank.speedBoostTimer, this.maxDurations.speedBoost);
         this.updatePowerUpUI(powerUpsPanel, 'rapidFire', tank.rapidFire, tank.rapidFireTimer, this.maxDurations.rapidFire);
@@ -86,11 +88,93 @@ class TankStatusUI {
         this.updatePowerUpUI(powerUpsPanel, 'invisibility', tank.invisibility, tank.invisibilityTimer, this.maxDurations.invisibility);
         this.updatePowerUpUI(powerUpsPanel, 'empActive', tank.empActive, tank.empTimer, this.maxDurations.empActive);
         
-        // Special cases for power-ups without timers (update to handle mines count)
-        this.updatePowerUpUI(powerUpsPanel, 'spreadShot', tank.spreadShot > 0, null, null, tank.spreadShot);
-        this.updatePowerUpUI(powerUpsPanel, 'mines', tank.mines > 0, null, null, tank.mines);
+        // Special cases for power-ups without timers
+        this.updateCountBasedPowerUp(powerUpsPanel, 'spreadShot', tank.spreadShot > 0, tank.spreadShot, 3);
+        this.updateCountBasedPowerUp(powerUpsPanel, 'mines', tank.mines > 0, tank.mines, 3);
+        
         this.updatePowerUpUI(powerUpsPanel, 'megaBullet', tank.megaBullet, null, null);
         this.updatePowerUpUI(powerUpsPanel, 'homingMissile', tank.homingMissile, null, null);
+    }
+
+    // New method to display ammo as progress steps
+    updateAmmoDisplay(ammoElement, ammo, maxAmmo) {
+        // Clear current content
+        ammoElement.innerHTML = '';
+        
+        // Calculate percentage for each step
+        const stepPercent = 100 / maxAmmo;
+        
+        // Create progress bar container
+        const progressBar = document.createElement('div');
+        progressBar.className = 'ammo-progress-bar';
+        
+        // Create steps
+        for (let i = 0; i < maxAmmo; i++) {
+            const step = document.createElement('div');
+            step.className = 'ammo-step';
+            
+            // Active class for filled ammo
+            if (i < ammo) {
+                step.classList.add('active');
+            }
+            
+            progressBar.appendChild(step);
+        }
+        
+        ammoElement.appendChild(progressBar);
+    }
+
+    // New method for count-based power-ups with progress bars
+    updateCountBasedPowerUp(panel, type, isActive, count, maxCount) {
+        const powerUpElement = panel.querySelector(`[data-type="${type}"]`);
+        if (!powerUpElement) return;
+        
+        // Update active state
+        if (isActive && count > 0) {
+            powerUpElement.classList.add('active');
+            
+            // Create or update progress bar
+            let progressBar = powerUpElement.querySelector('.count-progress-bar');
+            if (!progressBar) {
+                // Create the progress bar structure if it doesn't exist
+                const progressContainer = document.createElement('div');
+                progressContainer.className = 'count-progress-container';
+                
+                progressBar = document.createElement('div');
+                progressBar.className = 'count-progress-bar';
+                
+                progressContainer.appendChild(progressBar);
+                powerUpElement.appendChild(progressContainer);
+            }
+            
+            // Update the progress bar width
+            const percentage = (count / maxCount) * 100;
+            progressBar.style.width = `${percentage}%`;
+            
+            // Display the count as text
+            let countElement = powerUpElement.querySelector('.power-up-count');
+            if (!countElement) {
+                countElement = document.createElement('div');
+                countElement.className = 'power-up-count';
+                powerUpElement.appendChild(countElement);
+            }
+            
+            countElement.textContent = count;
+        } else {
+            powerUpElement.classList.remove('active');
+            
+            // Remove progress bar if it exists
+            const progressContainer = powerUpElement.querySelector('.count-progress-container');
+            if (progressContainer) {
+                progressContainer.remove();
+            }
+            
+            // Remove count element if it exists
+            const countElement = powerUpElement.querySelector('.power-up-count');
+            if (countElement) {
+                countElement.remove();
+            }
+        }
     }
 
     updatePowerUpUI(panel, type, isActive, currentTimer, maxDuration, count = null) {
