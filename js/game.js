@@ -90,9 +90,9 @@ class Tank {
         this.height = 30;
         this.color = color;
         this.angle = 0;
-        this.baseSpeed = 1.5; // Store base speed
+        this.baseSpeed = 2.0; // Increased base speed for smoother movement
         this.speed = this.baseSpeed;
-        this.turnSpeed = 0.03;
+        this.turnSpeed = 0.04; // Slightly increased turn speed
         this.controls = controls;
         this.moving = { forward: false, backward: false, left: false, right: false };
         this.shooting = false;
@@ -107,6 +107,10 @@ class Tank {
         this.playerNumber = playerNumber;
         this.trackMarks = [];
         this.lastTrackTime = 0;
+        this.velocityX = 0; // Add velocity tracking for smoother movement
+        this.velocityY = 0; // Add velocity tracking for smoother movement
+        this.acceleration = 0.15; // Acceleration factor
+        this.friction = 0.92; // Friction factor for deceleration
         
         // Power-up properties
         this.shield = false;
@@ -153,24 +157,39 @@ class Tank {
             return;
         }
 
-        // Movement
-        let moveX = 0;
-        let moveY = 0;
-
         // Apply speed boost effect if active
         let currentSpeed = this.speedBoost ? this.speed * 1.5 : this.speed;
+        
+        // Calculate target velocity based on input
+        let targetVelocityX = 0;
+        let targetVelocityY = 0;
 
         if (this.moving.forward) {
-            moveX = Math.cos(this.angle) * currentSpeed;
-            moveY = Math.sin(this.angle) * currentSpeed;
+            targetVelocityX = Math.cos(this.angle) * currentSpeed;
+            targetVelocityY = Math.sin(this.angle) * currentSpeed;
         }
         if (this.moving.backward) {
-            moveX = -Math.cos(this.angle) * currentSpeed * 0.5;
-            moveY = -Math.sin(this.angle) * currentSpeed * 0.5;
+            targetVelocityX = -Math.cos(this.angle) * currentSpeed;
+            targetVelocityY = -Math.sin(this.angle) * currentSpeed;
         }
+        
+        // Smoothly approach target velocity
+        this.velocityX += (targetVelocityX - this.velocityX) * this.acceleration * (deltaTime / 16);
+        this.velocityY += (targetVelocityY - this.velocityY) * this.acceleration * (deltaTime / 16);
+        
+        // Apply friction when not actively moving or to smooth out changes
+        if (!this.moving.forward && !this.moving.backward) {
+            this.velocityX *= this.friction;
+            this.velocityY *= this.friction;
+        }
+        
+        // Prevent very small movements
+        if (Math.abs(this.velocityX) < 0.01) this.velocityX = 0;
+        if (Math.abs(this.velocityY) < 0.01) this.velocityY = 0;
 
         // Leave track marks
-        if ((this.moving.forward || this.moving.backward) && Date.now() - this.lastTrackTime > 100) {
+        if ((Math.abs(this.velocityX) > 0.5 || Math.abs(this.velocityY) > 0.5) && 
+            Date.now() - this.lastTrackTime > 100) {
             this.lastTrackTime = Date.now();
             this.trackMarks.push({
                 x: this.x + this.width / 2,
@@ -181,29 +200,49 @@ class Tank {
         }
 
         // Check collision for X and Y separately to enable wall sliding
-        let newX = this.x + moveX;
+        let newX = this.x + this.velocityX;
         let newY = this.y;
         
         // Try horizontal movement
         if (!this.checkCollision(newX, newY)) {
             this.x = newX;
+        } else {
+            // If collision, stop horizontal movement
+            this.velocityX = 0;
         }
         
         // Try vertical movement
         newX = this.x;
-        newY = this.y + moveY;
+        newY = this.y + this.velocityY;
         
         if (!this.checkCollision(newX, newY)) {
             this.y = newY;
+        } else {
+            // If collision, stop vertical movement
+            this.velocityY = 0;
         }
 
-        // Rotation - add deltaTime-based smoothing
-        if (this.moving.left) this.angle -= this.turnSpeed * (deltaTime / 8);
-        if (this.moving.right) this.angle += this.turnSpeed * (deltaTime / 8);
+        // Rotation - smoother with deltaTime normalization
+        const turnAmount = this.turnSpeed * (deltaTime / 16);
+        if (this.moving.left) this.angle -= turnAmount;
+        if (this.moving.right) this.angle += turnAmount;
 
-        // Boundary check
-        this.x = Math.max(0, Math.min(canvas.width - this.width, this.x));
-        this.y = Math.max(0, Math.min(canvas.height - this.height, this.y));
+        // Boundary check with bounce effect
+        if (this.x < 0) {
+            this.x = 0;
+            this.velocityX = Math.abs(this.velocityX) * 0.5; // Bounce with reduced velocity
+        } else if (this.x > canvas.width - this.width) {
+            this.x = canvas.width - this.width;
+            this.velocityX = -Math.abs(this.velocityX) * 0.5; // Bounce with reduced velocity
+        }
+        
+        if (this.y < 0) {
+            this.y = 0;
+            this.velocityY = Math.abs(this.velocityY) * 0.5; // Bounce with reduced velocity
+        } else if (this.y > canvas.height - this.height) {
+            this.y = canvas.height - this.height;
+            this.velocityY = -Math.abs(this.velocityY) * 0.5; // Bounce with reduced velocity
+        }
 
         // Update power-up timers
         this.updatePowerUpTimers(deltaTime);
