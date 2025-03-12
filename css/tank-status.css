@@ -100,6 +100,7 @@
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden; /* For icon positioning */
+    cursor: help; /* Change cursor to show it's a help element */
 }
 
 /* Hide the FontAwesome icons that don't match the game style */
@@ -622,4 +623,118 @@
         width: 30px;
         height: 30px;
     }
+}
+
+/* Add tooltips for power-up items */
+.power-up-item {
+    position: relative;
+    cursor: help; /* Change cursor to show it's a help element */
+}
+
+/* Base tooltip style */
+.power-up-item::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: -45px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    white-space: nowrap;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.3s, visibility 0.3s;
+    z-index: 100;
+    pointer-events: none;
+    width: max-content;
+    max-width: 200px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+/* Tooltip arrow */
+.power-up-item::after {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 5px;
+    border-style: solid;
+    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.3s, visibility 0.3s;
+    pointer-events: none;
+}
+
+/* Show tooltip on hover */
+.power-up-item:hover::before,
+.power-up-item:hover::after {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Positioning for different status panels */
+.red .power-up-item::before {
+    left: auto;
+    right: 50%;
+    transform: translateX(50%);
+}
+
+.red .power-up-item::after {
+    left: auto;
+    right: 50%;
+    transform: translateX(50%);
+}
+
+/* Specific tooltips for each power-up type */
+.power-shield[data-tooltip]:before {
+    content: "Shield: Absorbs one hit from enemy bullets";
+}
+
+.power-ricochet[data-tooltip]:before {
+    content: "Ricochet: Bullets bounce off walls and obstacles";
+}
+
+.power-piercing[data-tooltip]:before {
+    content: "Piercing: Bullets pass through and destroy obstacles";
+}
+
+.power-speed[data-tooltip]:before {
+    content: "Speed Boost: Increases tank movement speed";
+}
+
+.power-rapid[data-tooltip]:before {
+    content: "Rapid Fire: Shoot bullets faster and reload quicker";
+}
+
+.power-mine[data-tooltip]:before {
+    content: "Mine Layer: Place mines that explode after a few seconds";
+}
+
+.power-spread[data-tooltip]:before {
+    content: "Spread Shot: Fires 3 bullets in a spread pattern";
+}
+
+.power-magnetic[data-tooltip]:before {
+    content: "Magnetic Shield: Attracts and destroys nearby bullets";
+}
+
+.power-invis[data-tooltip]:before {
+    content: "Invisibility: Partially invisible and immune to homing missiles";
+}
+
+.power-mega[data-tooltip]:before {
+    content: "Mega Bullet: Fires a larger, more powerful bullet";
+}
+
+.power-homing[data-tooltip]:before {
+    content: "Homing Missile: Fires a missile that tracks the enemy tank";
+}
+
+.power-emp[data-tooltip]:before {
+    content: "EMP: Disables the enemy tank's controls for a few seconds";
 }
