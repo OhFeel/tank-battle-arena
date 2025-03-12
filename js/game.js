@@ -101,7 +101,7 @@ class Tank {
         this.maxLives = 3;
         this.ammo = 5;
         this.maxAmmo = 5;
-        this.baseReloadTime = 1000; // Store base reload time
+        this.baseReloadTime = 700; // Store base reload time
         this.reloadTime = this.baseReloadTime;
         this.canShoot = true;
         this.playerNumber = playerNumber;
