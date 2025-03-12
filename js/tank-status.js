@@ -95,7 +95,7 @@ class TankStatusUI {
         this.updateSpreadShotStatus(powerUpsPanel, 'spreadShot', tank.spreadShot > 0, tank.spreadShot, 3);
         
         this.updatePowerUpUI(powerUpsPanel, 'megaBullet', tank.megaBullet, null, null);
-        this.updatePowerUpUI(powerUpsPanel, 'homingMissile', tank.homingMissile, null, null);
+        this.updateCountBasedPowerUp(powerUpsPanel, 'homingMissile', tank.homingMissileBullets > 0, tank.homingMissileBullets, 2);
     }
 
     // New method to display ammo as progress steps

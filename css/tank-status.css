@@ -106,10 +106,11 @@
 /* Hide the FontAwesome icons that don't match the game style */
 .power-up-item i {
     opacity: 1; /* Change from 0 to 1 to make icons visible */
-    font-size: 18px; /* Set appropriate size for the icons */
+    font-size: 20px; /* Slightly larger for better visibility */
     color: white; /* Make icons white for better visibility */
     z-index: 2; /* Ensure icons appear above backgrounds */
     position: relative; /* Ensure proper positioning */
+    text-shadow: 0 0 2px black;
 }
 
 /* Keep the custom shapes as background elements */
@@ -152,8 +153,7 @@
 .power-magnetic { background-color: rgba(138, 43, 226, 0.8); }
 .power-invis { background-color: rgba(192, 192, 192, 0.8); }
 .power-mega { background-color: rgba(220, 20, 60, 0.8); }
-.power-homing { background-color: rgba(255, 69, 0, 0.8); }
-.power-emp { background-color: rgba(255, 255, 0, 0.8); overflow: visible; }
+.power-homing { background-color: rgba(255, 69, 0, 0.8); overflow: visible; }
 
 @keyframes pulse {
     0% { transform: scale(1); }
@@ -473,18 +473,19 @@
 /* Add styles for counting mines and spread shots */
 .power-up-count {
     position: absolute;
-    top: -5px;
-    right: -5px;
+    top: -8px;
+    right: -8px;
     background-color: rgba(255, 255, 255, 0.9);
     color: #333;
     border-radius: 50%;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     font-size: 12px;
-    line-height: 18px;
+    line-height: 20px;
     text-align: center;
     font-weight: bold;
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
+    z-index: 3;
 }
 
 /* Make mine icon pulse when active */
@@ -552,16 +553,18 @@
 /* Add styles for count-based progress bars */
 .count-progress-container {
     position: absolute;
-    bottom: 2px;
+    bottom: 0;
+    left: 0;
     width: 100%;
-    height: 3px;
-    background-color: rgba(255, 255, 255, 0.3);
+    height: 4px;
+    background-color: rgba(0, 0, 0, 0.3);
     overflow: hidden;
+    z-index: 2;
 }
 
 .count-progress-bar {
     height: 100%;
-    background-color: #f39c12; /* Ammo yellow color */
+    background-color: rgba(255, 255, 255, 0.8);
     width: 100%;
     transition: width 0.3s ease;
 }
@@ -747,4 +750,34 @@
 
 .power-emp[data-tooltip]:before {
     content: "EMP: Disables the enemy tank's controls for a few seconds";
+}
+
+/* Fix for making the homing missile count more visible */
+.power-homing.active .power-up-count {
+    background-color: #ffffff;
+    color: #000000;
+    font-weight: bold;
+    border: 1px solid #000000;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    font-size: 14px;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+    z-index: 3;
+}
+
+/* Make the homing missile icon more distinctive */
+.power-homing {
+    background-color: rgba(255, 69, 0, 0.8);
+    position: relative;
+    overflow: visible;
+}
+
+.power-homing.active {
+    animation: homing-pulse 1s infinite alternate;
+}
+
+@keyframes homing-pulse {
+    0% { box-shadow: 0 0 5px rgba(255, 69, 0, 0.8); }
+    100% { box-shadow: 0 0 15px rgba(255, 69, 0, 1); }
 }
