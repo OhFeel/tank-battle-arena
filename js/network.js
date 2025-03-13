@@ -6,7 +6,7 @@ class NetworkManager {
     constructor() {
         this.socket = null;
         this.connected = false;
-        this.serverUrl = 'ws://localhost:3000'; // Change this to your server's public address for remote play
+        this.serverUrl = 'wss://tank-battle-arena.onrender.com'; // Change this to your server's public address for remote play
         this.clientId = null;
         this.eventHandlers = {};
         this.latency = 0;
