@@ -333,6 +333,12 @@ class Tank {
     }
     
     layMine() {
+        // If in online mode, send the mine-laying action to the server
+        if (window.networkManager && window.onlineGameManager && window.onlineGameManager.isOnlineGame) {
+            window.networkManager.sendGameInput({ layingMine: true });
+            return; // Skip immediate local mine placement
+        }
+        
         if (this.mines <= 0) return;
         
         // Don't allow placing mines too frequently
@@ -373,6 +379,12 @@ class Tank {
     }
 
     shoot() {
+        // If in online mode, send the shoot action to the server
+        if (window.networkManager && window.onlineGameManager && window.onlineGameManager.isOnlineGame) {
+            window.networkManager.sendGameInput({ shooting: true });
+            return; // Skip immediate local shooting in server-authoritative mode
+        }
+
         if (this.ammo <= 0 || !this.canShoot || this.empActive) return;
 
         // Store the bullet properties we'll use
@@ -3031,3 +3043,4 @@ TankStatusUI.prototype.updateTankStatus = function(tank, playerNum) {
     
     // ...existing code...
 };
+`

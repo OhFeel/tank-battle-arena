@@ -413,8 +413,8 @@ class NetworkManager {
         if (changed) {
             this.lastInput = { ...input };
             this.sendMessage({
-                type: 'player_input',
-                input: input,
+                type: 'player_action',
+                action: input,
                 timestamp: Date.now(),
                 playerId: this.playerId,
                 gameId: this.gameId

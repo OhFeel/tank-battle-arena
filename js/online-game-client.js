@@ -335,23 +335,25 @@ class OnlineGameClient {
             mine: 'e'
         };
         
-        // Create tanks from server data
+        // Create tanks from server data using server-specified spawn positions and angle
         tankData.forEach(data => {
             const tank = new Tank(
                 data.x,
                 data.y,
                 data.color,
-                wasdControls, // Both players use WASD
+                wasdControls, // Both players use WASD in online mode
                 data.playerNumber
             );
-            
-            // Copy any other properties
+            // Ensure tank uses the server-supplied angle if provided
+            if (data.angle !== undefined) {
+                tank.angle = data.angle;
+            }
+            // Copy any additional properties (if needed)
             for (const key in data) {
-                if (key !== 'x' && key !== 'y' && key !== 'color' && key !== 'playerNumber') {
+                if (!['x','y','color','playerNumber','angle'].includes(key)) {
                     tank[key] = data[key];
                 }
             }
-            
             window.tanks.push(tank);
         });
     }

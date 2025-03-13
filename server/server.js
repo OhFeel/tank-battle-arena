@@ -1031,6 +1031,14 @@ class GameState {
         }
     }
     
+    // Define fixed spawn positions for synchronization
+    function getInitialSpawnPoints() {
+        return [
+           { x: 100, y: 100, angle: 0, color: "#3498db", playerNumber: 1 },
+           { x: 700, y: 500, angle: Math.PI, color: "#e74c3c", playerNumber: 2 }
+        ];
+    }
+    
     // Start the WebSocket server
     const server = new WebSocket.Server({ port: PORT });
     
