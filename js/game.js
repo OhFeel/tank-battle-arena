@@ -2560,6 +2560,19 @@ function handleKeyDown(e) {
         if (e.key === tank.controls.mine) {
             tank.layingMine = true;
         }
+        // ...existing code...
+        if (window.networkManager && window.onlineGameManager && window.onlineGameManager.isOnlineGame &&
+            tank.playerNumber === window.onlineGameManager.playerNumber) {
+            const inputState = {
+                forward: tank.moving.forward,
+                backward: tank.moving.backward,
+                left: tank.moving.left,
+                right: tank.moving.right,
+                shooting: tank.shooting,
+                layingMine: tank.layingMine
+            };
+            window.networkManager.updateInput(inputState);
+        }
     }
 }
 
@@ -2589,6 +2602,19 @@ function handleKeyUp(e) {
         if (e.key === tank.controls.right) tank.moving.right = false;
         if (e.key === tank.controls.shoot) tank.shooting = false;
         if (e.key === tank.controls.mine) tank.layingMine = false;
+        // ...existing code...
+        if (window.networkManager && window.onlineGameManager && window.onlineGameManager.isOnlineGame &&
+            tank.playerNumber === window.onlineGameManager.playerNumber) {
+            const inputState = {
+                forward: tank.moving.forward,
+                backward: tank.moving.backward,
+                left: tank.moving.left,
+                right: tank.moving.right,
+                shooting: tank.shooting,
+                layingMine: tank.layingMine
+            };
+            window.networkManager.updateInput(inputState);
+        }
     }
 }
 

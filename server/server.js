@@ -1298,3 +1298,28 @@ class GameState {
     setInterval(() => {
         console.log(`Server status: ${connectedClients.size} clients, ${waitingPlayers.length} waiting, ${games.size} active games`);
     }, 60000); // Every minute
+
+    ws.on('message', (data) => {
+        let message;
+        try {
+            message = JSON.parse(data);
+        } catch (err) {
+            console.error('Invalid JSON:', err);
+            return;
+        }
+        switch(message.type) {
+            case 'game_input':
+                const game = activeGames[message.gameId];
+                if (game) {
+                    const opponentSocket = game.players.find(p => p.playerId !== message.playerId)?.ws;
+                    if (opponentSocket && opponentSocket.readyState === WebSocket.OPEN) {
+                        opponentSocket.send(JSON.stringify({
+                            type: 'opponent_input',
+                            input: message.input,
+                            timestamp: message.timestamp
+                        }));
+                    }
+                }
+                break;
+        }
+    });
