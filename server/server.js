@@ -1299,6 +1299,10 @@ class GameState {
         console.log(`Server status: ${connectedClients.size} clients, ${waitingPlayers.length} waiting, ${games.size} active games`);
     }, 60000); // Every minute
 
+const wss = new WebSocket.Server({ port: PORT });
+
+wss.on('connection', (ws) => {
+    // Now ws is defined as the client connection.
     ws.on('message', (data) => {
         let message;
         try {
@@ -1308,7 +1312,9 @@ class GameState {
             return;
         }
         switch(message.type) {
+            // ...existing cases...
             case 'game_input':
+                // Relay input to opponent (example code)
                 const game = activeGames[message.gameId];
                 if (game) {
                     const opponentSocket = game.players.find(p => p.playerId !== message.playerId)?.ws;
@@ -1321,5 +1327,7 @@ class GameState {
                     }
                 }
                 break;
+            // ...existing cases...
         }
     });
+});
