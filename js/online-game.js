@@ -79,13 +79,25 @@ class OnlineGameManager {
     startOnlineGame() {
         if (this.gameStarted) return;
         
-        // Reset game components using server's map seed
-        Math.seedrandom(this.mapSeed);
+        // Ensure seedrandom is available before using it
+        if (typeof Math.seedrandom === 'function') {
+            Math.seedrandom(this.mapSeed);
+            console.log('Using seedrandom with seed:', this.mapSeed);
+        } else {
+            console.warn('Math.seedrandom is not available; using fallback seeded random.');
+            const seed = Number(this.mapSeed) || Date.now();
+            let s = seed;
+            // Simple fallback seeded random function
+            const fallbackRandom = function() {
+                s = (s * 9301 + 49297) % 233280;
+                return s / 233280;
+            };
+            // Override Math.random with our fallback
+            Math.random = fallbackRandom;
+        }
         
-        // Initialize the game with the provided seed
-        window.initGame(); // This function should be available in the game.js
-        
-        // Start the game state synchronization
+        // Initialize the game using the seeded random
+        window.initGame();
         this.startStateSync();
         
         this.gameStarted = true;
