@@ -11,12 +11,10 @@ class OnlineGameClient {
         this.lastServerUpdate = null;
         this.interpolationBuffer = [];
         this.interpolationDelay = 100; // ms delay for interpolation
-        this.inputSequence = 0;
-        this.pendingInputs = [];
         this.gameSetup = false;
         this.mapData = null;
-        this.powerUpData = [];
-        this.latency = 0;
+        this.lastKeyState = {};
+        this.wasdControls = true; // Both players will use WASD
     }
     
     initialize() {
@@ -27,6 +25,7 @@ class OnlineGameClient {
         
         console.log('Initializing server-authoritative online game client');
         this.setupNetworkHandlers();
+        this.setupKeyboardHandlers();
         return true;
     }
     
@@ -34,11 +33,83 @@ class OnlineGameClient {
         // Setup event handlers for server messages
         window.networkManager.on('onGameFound', this.handleGameFound.bind(this));
         window.networkManager.on('onGameStart', this.handleGameStart.bind(this));
-        window.networkManager.on('onStateUpdate', this.handleGameStateUpdate.bind(this));
+        window.networkManager.on('onGameState', this.handleGameState.bind(this));
         window.networkManager.on('onOpponentDisconnected', this.handleOpponentDisconnected.bind(this));
         window.networkManager.on('onMapData', this.handleMapData.bind(this));
-        window.networkManager.on('onPowerUpSpawned', this.handlePowerUpSpawned.bind(this));
-        window.networkManager.on('onPowerUpCollected', this.handlePowerUpCollected.bind(this));
+    }
+    
+    setupKeyboardHandlers() {
+        // Setup keyboard event listeners
+        document.addEventListener('keydown', this.handleKeyDown.bind(this));
+        document.addEventListener('keyup', this.handleKeyUp.bind(this));
+    }
+    
+    handleKeyDown(e) {
+        if (!this.isActive || !gameState.active || gameState.over) return;
+        
+        // Use WASD controls for both players as that's what the server expects
+        const input = {};
+        
+        // WASD for movement
+        if (e.key === 'w') input.forward = true;
+        if (e.key === 's') input.backward = true;
+        if (e.key === 'a') input.left = true;
+        if (e.key === 'd') input.right = true;
+        
+        // Space for shooting
+        if (e.key === ' ') input.shooting = true;
+        
+        // E for mine laying
+        if (e.key === 'e') input.layingMine = true;
+        
+        // Only update if something changed
+        let changed = false;
+        for (const key in input) {
+            if (this.lastKeyState[key] !== input[key]) {
+                changed = true;
+                this.lastKeyState[key] = input[key];
+            }
+        }
+        
+        if (changed && window.networkManager) {
+            window.networkManager.updateInput(this.lastKeyState);
+        }
+        
+        // Prevent default browser actions for game controls
+        if (['w', 's', 'a', 'd', ' ', 'e'].includes(e.key)) {
+            e.preventDefault();
+        }
+    }
+    
+    handleKeyUp(e) {
+        if (!this.isActive || !gameState.active || gameState.over) return;
+        
+        const input = {};
+        
+        // WASD for movement
+        if (e.key === 'w') input.forward = false;
+        if (e.key === 's') input.backward = false;
+        if (e.key === 'a') input.left = false;
+        if (e.key === 'd') input.right = false;
+        
+        // Space for shooting
+        if (e.key === ' ') input.shooting = false;
+        
+        // E for mine laying
+        if (e.key === 'e') input.layingMine = false;
+        
+        // Only update if something changed
+        let changed = false;
+        for (const key in input) {
+            if (this.lastKeyState[key] !== input[key]) {
+                changed = true;
+                this.lastKeyState[key] = input[key];
+            }
+        }
+        
+        if (changed && window.networkManager) {
+            window.networkManager.updateInput(this.lastKeyState);
+        }
     }
     
     handleGameFound(data) {
@@ -59,7 +130,7 @@ class OnlineGameClient {
         console.log('Game starting with server data:', data);
         
         // Save map data from server
-        this.mapData = data.mapData;
+        this.mapData = data.mapData || data;
         
         // Initialize game using server data
         this.setupServerManagedGame(data);
@@ -82,8 +153,148 @@ class OnlineGameClient {
         }
     }
     
+    handleGameState(state) {
+        if (!this.gameSetup || !state) return;
+        
+        this.serverGameState = state;
+        
+        // Update local game state to match server
+        this.syncGameState(state);
+    }
+    
+    syncGameState(state) {
+        // Update tanks
+        if (state.tanks && tanks.length >= 2) {
+            for (let i = 0; i < Math.min(state.tanks.length, tanks.length); i++) {
+                const localTank = tanks[i];
+                const serverTank = state.tanks[i];
+                
+                // Apply server position
+                localTank.x = serverTank.x;
+                localTank.y = serverTank.y;
+                localTank.angle = serverTank.angle;
+                
+                // Update tank state
+                localTank.lives = serverTank.lives;
+                localTank.ammo = serverTank.ammo;
+                localTank.moving = serverTank.moving;
+                localTank.shooting = serverTank.shooting;
+                
+                // Update powerups
+                localTank.shield = serverTank.shield;
+                localTank.ricochetBullets = serverTank.ricochetBullets;
+                localTank.piercingBullets = serverTank.piercingBullets;
+                localTank.speedBoost = serverTank.speedBoost;
+                localTank.rapidFire = serverTank.rapidFire;
+                localTank.spreadShot = serverTank.spreadShot;
+                localTank.mines = serverTank.mines;
+                localTank.megaBullet = serverTank.megaBullet;
+                localTank.homingMissileBullets = serverTank.homingMissileBullets;
+                localTank.magneticShield = serverTank.magneticShield;
+                localTank.invisibility = serverTank.invisibility;
+            }
+        }
+        
+        // Sync bullets
+        this.syncBullets(state.bullets || []);
+        
+        // Sync powerups
+        this.syncPowerUps(state.powerUps || []);
+        
+        // Sync mines
+        this.syncMines(state.mines || []);
+    }
+    
+    syncBullets(serverBullets) {
+        // Remove bullets that no longer exist
+        bullets = bullets.filter(bullet => 
+            serverBullets.some(sb => sb.id === bullet.id)
+        );
+        
+        // Add or update bullets from server
+        for (const serverBullet of serverBullets) {
+            const existingBullet = bullets.find(b => b.id === serverBullet.id);
+            
+            if (!existingBullet) {
+                // Create new bullet
+                let bullet = this.createBulletFromServer(serverBullet);
+                bullets.push(bullet);
+            } else {
+                // Update existing bullet
+                existingBullet.x = serverBullet.x;
+                existingBullet.y = serverBullet.y;
+                existingBullet.angle = serverBullet.angle;
+            }
+        }
+    }
+    
+    createBulletFromServer(data) {
+        // Create right type of bullet based on server data
+        if (data.isHoming) {
+            // Find target tank for homing missile
+            const targetTank = tanks.find(tank => tank.playerNumber !== data.owner);
+            return new HomingMissile(
+                data.x, data.y, data.angle, data.owner, 
+                targetTank, data.ricochet, data.piercing, data.isMega
+            );
+        } else {
+            return new Bullet(
+                data.x, data.y, data.angle, data.owner,
+                data.ricochet, data.piercing, data.isMega
+            );
+        }
+    }
+    
+    syncPowerUps(serverPowerUps) {
+        // Remove powerups that no longer exist
+        powerUps = powerUps.filter(powerUp =>
+            serverPowerUps.some(sp => sp.id === powerUp.id)
+        );
+        
+        // Add new powerups from server
+        for (const serverPowerUp of serverPowerUps) {
+            if (!powerUps.some(p => p.id === serverPowerUp.id)) {
+                const powerUp = new PowerUp(
+                    serverPowerUp.x, serverPowerUp.y, serverPowerUp.type
+                );
+                powerUp.id = serverPowerUp.id;
+                powerUps.push(powerUp);
+            }
+        }
+    }
+    
+    syncMines(serverMines) {
+        // Remove mines that no longer exist
+        mines = mines.filter(mine =>
+            serverMines.some(sm => sm.id === mine.id)
+        );
+        
+        // Add new mines from server
+        for (const serverMine of serverMines) {
+            if (!mines.some(m => m.id === serverMine.id)) {
+                mines.push({
+                    id: serverMine.id,
+                    x: serverMine.x,
+                    y: serverMine.y,
+                    radius: serverMine.radius || 8,
+                    owner: serverMine.owner,
+                    armTime: serverMine.armTime,
+                    blastRadius: serverMine.blastRadius || 80,
+                    blinkRate: 500,
+                    blinkState: false
+                });
+            } else {
+                // Update existing mine timer
+                const mine = mines.find(m => m.id === serverMine.id);
+                if (mine) mine.armTime = serverMine.armTime;
+            }
+        }
+    }
+    
     setupServerManagedGame(data) {
-        // Clear any existing game objects
+        const mapData = data.mapData || data;
+        
+        // Clear existing game objects
         window.tanks = [];
         window.bullets = [];
         window.obstacles = [];
@@ -91,19 +302,23 @@ class OnlineGameClient {
         window.mines = [];
         
         // Create obstacles from server data
-        this.createObstaclesFromServerData(data.mapData.obstacles);
+        this.createObstaclesFromServerData(mapData.obstacles);
         
-        // Create tanks with positions from server data
-        this.createTanksFromServerData(data.mapData.tanks);
+        // Create tanks from server data
+        this.createTanksFromServerData(mapData.tanks);
         
         // Create any initial powerups
-        this.createPowerUpsFromServerData(data.mapData.powerUps);
+        if (mapData.powerUps) {
+            this.createPowerUpsFromServerData(mapData.powerUps);
+        }
         
         // Mark setup as complete
         this.gameSetup = true;
     }
     
     createObstaclesFromServerData(obstacleData) {
+        if (!obstacleData || !obstacleData.length) return;
+        
         window.obstacles = obstacleData.map(data => {
             return new Obstacle(
                 data.x,
@@ -116,36 +331,35 @@ class OnlineGameClient {
     }
     
     createTanksFromServerData(tankData) {
-        // Create tanks with proper controls
+        if (!tankData || !tankData.length) return;
+        
+        // Both players use WASD controls in online mode
+        const wasdControls = {
+            forward: 'w',
+            backward: 's',
+            left: 'a',
+            right: 'd',
+            shoot: ' ',
+            mine: 'e'
+        };
+        
+        // Create tanks from server data
         tankData.forEach(data => {
-            let controls;
-            
-            // Assign controls based on player number
-            if (data.playerNumber === this.playerNumber) {
-                // This is my tank
-                controls = {
-                    forward: 'w',
-                    backward: 's',
-                    left: 'a',
-                    right: 'd',
-                    shoot: ' ',
-                    mine: 'e'
-                };
-            } else {
-                // This is opponent's tank (won't be controlled by keyboard)
-                controls = {};
-            }
-            
-            // Create tank
             const tank = new Tank(
                 data.x,
                 data.y,
                 data.color,
-                controls,
+                wasdControls, // Both players use WASD
                 data.playerNumber
             );
             
-            // Add to tanks array
+            // Copy any other properties
+            for (const key in data) {
+                if (key !== 'x' && key !== 'y' && key !== 'color' && key !== 'playerNumber') {
+                    tank[key] = data[key];
+                }
+            }
+            
             window.tanks.push(tank);
         });
     }
@@ -154,259 +368,20 @@ class OnlineGameClient {
         if (!powerUpData || !powerUpData.length) return;
         
         window.powerUps = powerUpData.map(data => {
-            return new PowerUp(data.x, data.y, data.type);
+            const powerUp = new PowerUp(data.x, data.y, data.type);
+            powerUp.id = data.id;
+            return powerUp;
         });
-    }
-    
-    handleGameStateUpdate(data) {
-        if (!this.isActive) return;
-        
-        // Store state update in interpolation buffer
-        this.interpolationBuffer.push({
-            timestamp: data.timestamp,
-            tanks: data.tanks,
-            bullets: data.bullets,
-            powerUps: data.powerUps,
-            mines: data.mines
-        });
-        
-        // Keep buffer size manageable
-        while (this.interpolationBuffer.length > 10) {
-            this.interpolationBuffer.shift();
-        }
-    }
-    
-    update(deltaTime) {
-        if (!this.isActive || !this.gameSetup) return;
-        
-        // Apply interpolation to smooth rendering between server updates
-        this.interpolateGameState(deltaTime);
-        
-        // Process local player input and send to server
-        this.processPlayerInput();
-    }
-    
-    interpolateGameState(deltaTime) {
-        if (this.interpolationBuffer.length < 2) return;
-        
-        const now = Date.now();
-        const interpolationTime = now - this.interpolationDelay;
-        
-        // Find the two states to interpolate between
-        let older = null;
-        let newer = null;
-        
-        for (let i = 0; i < this.interpolationBuffer.length - 1; i++) {
-            if (this.interpolationBuffer[i].timestamp <= interpolationTime &&
-                this.interpolationBuffer[i+1].timestamp > interpolationTime) {
-                older = this.interpolationBuffer[i];
-                newer = this.interpolationBuffer[i+1];
-                break;
-            }
-        }
-        
-        // If we couldn't find appropriate states, use the most recent ones
-        if (!older || !newer) {
-            older = this.interpolationBuffer[this.interpolationBuffer.length - 2];
-            newer = this.interpolationBuffer[this.interpolationBuffer.length - 1];
-        }
-        
-        // Calculate interpolation ratio (0 to 1)
-        const totalTime = newer.timestamp - older.timestamp;
-        if (totalTime === 0) return; // Avoid division by zero
-        
-        const ratio = Math.max(0, Math.min(1, (interpolationTime - older.timestamp) / totalTime));
-        
-        // Interpolate tank positions and angles
-        this.interpolateTanks(older.tanks, newer.tanks, ratio);
-        
-        // Update bullets (not interpolated)
-        this.updateBullets(newer.bullets);
-        
-        // Update powerups
-        this.updatePowerUps(newer.powerUps);
-        
-        // Update mines
-        this.updateMines(newer.mines);
-    }
-    
-    interpolateTanks(olderTanks, newerTanks, ratio) {
-        for (let i = 0; i < window.tanks.length; i++) {
-            const tank = window.tanks[i];
-            
-            // Find corresponding server tank data
-            const oldTank = olderTanks.find(t => t.playerNumber === tank.playerNumber);
-            const newTank = newerTanks.find(t => t.playerNumber === tank.playerNumber);
-            
-            if (!oldTank || !newTank) continue;
-            
-            // For opponent tank, interpolate position and angle
-            if (tank.playerNumber !== this.playerNumber) {
-                // Interpolate position
-                tank.x = oldTank.x + (newTank.x - oldTank.x) * ratio;
-                tank.y = oldTank.y + (newTank.y - oldTank.y) * ratio;
-                
-                // Interpolate angle (handle wrapping)
-                let angleDiff = newTank.angle - oldTank.angle;
-                if (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                if (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                tank.angle = oldTank.angle + angleDiff * ratio;
-                
-                // Update movement state
-                tank.moving = newTank.moving;
-                tank.shooting = newTank.shooting;
-            }
-            
-            // For all tanks, update game state properties
-            tank.lives = newTank.lives;
-            tank.ammo = newTank.ammo;
-            tank.shield = newTank.powerUps.shield;
-            tank.ricochetBullets = newTank.powerUps.ricochet;
-            tank.piercingBullets = newTank.powerUps.piercing;
-            tank.speedBoost = newTank.powerUps.speedBoost;
-            tank.rapidFire = newTank.powerUps.rapidFire;
-            tank.mines = newTank.powerUps.mines;
-            tank.spreadShot = newTank.powerUps.spreadShot;
-            tank.magneticShield = newTank.powerUps.magneticShield;
-            tank.invisibility = newTank.powerUps.invisibility;
-            tank.megaBullet = newTank.powerUps.megaBullet;
-            tank.homingMissileBullets = newTank.powerUps.homingMissile;
-        }
-    }
-    
-    updateBullets(serverBullets) {
-        // Remove bullets that don't exist on the server
-        window.bullets = window.bullets.filter(bullet => 
-            serverBullets.some(sb => sb.id === bullet.id)
-        );
-        
-        // Add new bullets from server
-        for (const serverBullet of serverBullets) {
-            const existingBullet = window.bullets.find(b => b.id === serverBullet.id);
-            
-            if (!existingBullet) {
-                // Create new bullet based on server data
-                let bullet;
-                if (serverBullet.isHoming) {
-                    const targetTank = window.tanks.find(tank => tank.playerNumber !== serverBullet.owner);
-                    bullet = new HomingMissile(
-                        serverBullet.x, serverBullet.y, serverBullet.angle,
-                        serverBullet.owner, targetTank, 
-                        serverBullet.ricochet, serverBullet.piercing, serverBullet.isMega
-                    );
-                } else {
-                    bullet = new Bullet(
-                        serverBullet.x, serverBullet.y, serverBullet.angle,
-                        serverBullet.owner, serverBullet.ricochet,
-                        serverBullet.piercing, serverBullet.isMega
-                    );
-                }
-                
-                // Set ID and add to bullets array
-                bullet.id = serverBullet.id;
-                window.bullets.push(bullet);
-            } else {
-                // Update existing bullet
-                existingBullet.x = serverBullet.x;
-                existingBullet.y = serverBullet.y;
-                existingBullet.angle = serverBullet.angle;
-            }
-        }
-    }
-    
-    updatePowerUps(serverPowerUps) {
-        // Remove powerups that don't exist on server
-        window.powerUps = window.powerUps.filter(powerUp =>
-            serverPowerUps.some(sp => sp.id === powerUp.id)
-        );
-        
-        // Add new powerups from server
-        for (const serverPowerUp of serverPowerUps) {
-            if (!window.powerUps.some(p => p.id === serverPowerUp.id)) {
-                const powerUp = new PowerUp(
-                    serverPowerUp.x, serverPowerUp.y, serverPowerUp.type
-                );
-                powerUp.id = serverPowerUp.id;
-                window.powerUps.push(powerUp);
-            }
-        }
-    }
-    
-    updateMines(serverMines) {
-        if (!serverMines) return;
-        
-        // Remove mines that don't exist on server
-        window.mines = window.mines.filter(mine =>
-            serverMines.some(sm => sm.id === mine.id)
-        );
-        
-        // Add new mines from server
-        for (const serverMine of serverMines) {
-            if (!window.mines.some(m => m.id === serverMine.id)) {
-                const mine = {
-                    id: serverMine.id,
-                    x: serverMine.x,
-                    y: serverMine.y,
-                    radius: serverMine.radius || 8,
-                    owner: serverMine.owner,
-                    armTime: serverMine.armTime,
-                    blastRadius: serverMine.blastRadius || 80,
-                    blinkRate: 500,
-                    blinkState: false
-                };
-                window.mines.push(mine);
-            } else {
-                // Update existing mine
-                const mine = window.mines.find(m => m.id === serverMine.id);
-                mine.armTime = serverMine.armTime;
-                // Don't update position - mines are stationary
-            }
-        }
-    }
-    
-    processPlayerInput() {
-        // Get local player's tank
-        const myTank = window.tanks.find(tank => tank.playerNumber === this.playerNumber);
-        if (!myTank) return;
-        
-        // Create input object
-        const input = {
-            sequence: ++this.inputSequence,
-            forward: myTank.moving.forward,
-            backward: myTank.moving.backward,
-            left: myTank.moving.left,
-            right: myTank.moving.right,
-            shooting: myTank.shooting,
-            layingMine: myTank.layingMine,
-            timestamp: Date.now()
-        };
-        
-        // Store input for client-side prediction
-        this.pendingInputs.push(input);
-        
-        // Send to server
-        window.networkManager.sendGameInput(input);
     }
     
     handleMapData(data) {
-        // Store map data received from server
+        console.log('Received map data from server:', data);
         this.mapData = data;
-    }
-    
-    handlePowerUpSpawned(data) {
-        // Add new powerup
-        if (!this.isActive) return;
         
-        const powerUp = new PowerUp(data.x, data.y, data.type);
-        powerUp.id = data.id;
-        window.powerUps.push(powerUp);
-    }
-    
-    handlePowerUpCollected(data) {
-        // Remove collected powerup
-        if (!this.isActive) return;
-        
-        window.powerUps = window.powerUps.filter(p => p.id !== data.id);
+        // Initialize game with the map data
+        if (!this.gameSetup && this.mapData) {
+            this.setupServerManagedGame(this.mapData);
+        }
     }
     
     handleOpponentDisconnected() {
@@ -483,15 +458,15 @@ class OnlineGameClient {
         const tankColor = this.playerNumber === 1 ? 'Blue' : 'Red';
         const colorStyle = this.playerNumber === 1 ? '#3498db' : '#e74c3c';
         
-        playerIndicator.innerHTML = `<span>You are controlling the <span id="playerColor" style="color:${colorStyle}">${tankColor}</span> tank</span>`;
+        playerIndicator.innerHTML = `<span>You are Player ${this.playerNumber} (${tankColor} Tank) - Use WASD to move, Space to shoot, E for mines</span>`;
         document.querySelector('.game-container').appendChild(playerIndicator);
         
-        // Remove after 5 seconds
+        // Remove after 8 seconds
         setTimeout(() => {
             if (playerIndicator.parentNode) {
                 playerIndicator.parentNode.removeChild(playerIndicator);
             }
-        }, 5000);
+        }, 8000);
     }
     
     startGame() {

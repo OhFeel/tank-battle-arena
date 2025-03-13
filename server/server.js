@@ -964,6 +964,70 @@ class GameState {
                 console.log(`Game ${this.gameId} ended and removed from active games`);
             }, 5000); // 5 seconds delay before removing
         }
+
+        sendGameState() {
+            const gameState = {
+                type: 'game_state',
+                state: {
+                    tanks: this.tanks.map(tank => ({
+                        id: tank.id,
+                        x: tank.x,
+                        y: tank.y,
+                        angle: tank.angle,
+                        lives: tank.lives,
+                        ammo: tank.ammo,
+                        moving: tank.moving,
+                        shooting: tank.shooting,
+                        layingMine: tank.layingMine,
+                        shield: tank.powerUps.shield,
+                        ricochetBullets: tank.powerUps.ricochet,
+                        piercingBullets: tank.powerUps.piercing,
+                        speedBoost: tank.powerUps.speedBoost,
+                        rapidFire: tank.powerUps.rapidFire,
+                        mines: tank.powerUps.mines,
+                        spreadShot: tank.powerUps.spreadShot,
+                        magneticShield: tank.powerUps.magneticShield,
+                        invisibility: tank.powerUps.invisibility,
+                        megaBullet: tank.powerUps.megaBullet,
+                        homingMissileBullets: tank.powerUps.homingMissile
+                    })),
+                    bullets: this.bullets.map(bullet => ({
+                        id: bullet.id,
+                        x: bullet.x,
+                        y: bullet.y,
+                        angle: bullet.angle,
+                        owner: bullet.ownerId,
+                        ricochet: bullet.ricochet,
+                        piercing: bullet.piercing,
+                        isMega: bullet.isMega,
+                        isHoming: bullet.isHoming
+                    })),
+                    powerUps: this.powerUps.map(powerUp => ({
+                        id: powerUp.id,
+                        x: powerUp.x,
+                        y: powerUp.y,
+                        type: powerUp.type
+                    })),
+                    mines: this.mines.map(mine => ({
+                        id: mine.id,
+                        x: mine.x,
+                        y: mine.y,
+                        radius: mine.radius,
+                        owner: mine.owner,
+                        armTime: mine.armTime,
+                        blastRadius: mine.blastRadius
+                    })),
+                    timestamp: Date.now()
+                }
+            };
+            
+            // Send to both players
+            for (const player of this.players) {
+                if (player.readyState === WebSocket.OPEN) {
+                    player.send(JSON.stringify(gameState));
+                }
+            }
+        }
     }
     
     // Start the WebSocket server
@@ -1086,6 +1150,7 @@ class GameState {
         if (!tank) return;
         
         // Update tank input based on message
+        // Use the same input keys regardless of player number
         if (message.input) {
             if ('forward' in message.input) tank.moving.forward = message.input.forward;
             if ('backward' in message.input) tank.moving.backward = message.input.backward;
@@ -1095,12 +1160,12 @@ class GameState {
             if ('layingMine' in message.input) tank.layingMine = message.input.layingMine;
         }
         
-        // Notify other player about the input
+        // Notify other player about the input (optional, as the state update will handle this)
         const otherPlayer = game.players.find(p => p !== client.socket);
         if (otherPlayer && otherPlayer.readyState === WebSocket.OPEN) {
             otherPlayer.send(JSON.stringify({
                 type: 'opponent_input',
-                playerNumber: message.playerNumber,
+                playerNumber: tank.playerNumber,
                 input: message.input,
                 timestamp: Date.now()
             }));
@@ -1161,40 +1226,45 @@ class GameState {
         const game = new GameState(gameId, playerSockets);
         games.set(gameId, game);
         
-        // Generate the map and obstacles
+        // Setup player IDs and notify
+        for (let i = 0; i < game.tanks.length; i++) {
+            game.tanks[i].id = players[i].id;
+            game.tanks[i].playerNumber = i + 1;
+        }
+        
+        // Generate the map data to send to clients
         const mapData = {
             seed: game.mapSeed,
             obstacles: game.obstacles,
-            tanks: game.tanks.map(tank => ({
+            tanks: game.tanks.map((tank, idx) => ({
                 id: tank.id,
                 x: tank.x,
                 y: tank.y,
-                playerNumber: players.findIndex(p => p.id === tank.id) + 1,
-                color: tank.color
+                angle: tank.angle,
+                color: idx === 0 ? "#3498db" : "#e74c3c", // Blue for P1, Red for P2
+                playerNumber: idx + 1
             })),
             powerUps: game.powerUps
         };
         
-        // Send game found notification to players first
+        // Send game found notification to players
         players.forEach((client, index) => {
             const opponent = players[(index + 1) % players.length];
             client.socket.send(JSON.stringify({
                 type: 'game_found',
                 gameId: gameId,
-                playerNumber: index + 1,
-                opponent: opponent.name,
+                playerNumber: index + 1, // Player 1 or Player 2
+                opponentName: opponent.name,
                 mapSeed: game.mapSeed,
                 timestamp: Date.now()
             }));
             
-            // Then send complete map data
-            setTimeout(() => {
-                client.socket.send(JSON.stringify({
-                    type: 'game_start',
-                    mapData: mapData,
-                    timestamp: Date.now()
-                }));
-            }, 1000);
+            // Send complete map data right after
+            client.socket.send(JSON.stringify({
+                type: 'game_start',
+                mapData: mapData,
+                timestamp: Date.now()
+            }));
         });
         
         // Start game update loop

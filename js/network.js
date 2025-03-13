@@ -46,6 +46,19 @@ class NetworkManager {
         this.reconnectDelay = 2000;
         this.connectedToGame = false;
         this.predictedMoves = []; // To store predicted moves
+
+        // Add properties for full game state synchronization
+        this.gameState = null;
+        this.lastInput = {
+            forward: false,
+            backward: false,
+            left: false,
+            right: false,
+            shooting: false,
+            layingMine: false
+        };
+        this.inputChanged = false;
+        this.inputUpdateInterval = null;
     }
 
     // Connect to game server
@@ -67,6 +80,10 @@ class NetworkManager {
                     this.connected = true;
                     this.networkReady = true;
                     this.startPingInterval();
+                    
+                    // Start input update loop when connected
+                    this.startInputUpdateLoop();
+                    
                     this.emit('onConnected');
                     resolve();
                 };
@@ -245,6 +262,12 @@ class NetworkManager {
                     this._triggerCallbacks('onMapData', message.mapData);
                     break;
 
+                case 'game_state':
+                    // Full game state from server
+                    this.gameState = message.state;
+                    this.emit('onGameState', message.state);
+                    break;
+
                 default:
                     console.log('Unknown message type:', message.type);
             }
@@ -351,6 +374,55 @@ class NetworkManager {
                 handler(data);
             }
         }
+    }
+
+    // Start loop to send inputs to server when they change
+    startInputUpdateLoop() {
+        if (this.inputUpdateInterval) {
+            clearInterval(this.inputUpdateInterval);
+        }
+        
+        this.inputUpdateInterval = setInterval(() => {
+            if (this.connected && this.gameId && this.inputChanged) {
+                this.sendGameInput(this.lastInput);
+                this.inputChanged = false;
+            }
+        }, 16); // Approx 60 times per second
+    }
+    
+    // Stop input update loop
+    stopInputUpdateLoop() {
+        if (this.inputUpdateInterval) {
+            clearInterval(this.inputUpdateInterval);
+            this.inputUpdateInterval = null;
+        }
+    }
+    
+    // Update input state - call this when input changes
+    updateInput(input) {
+        if (!this.lastInput) this.lastInput = {};
+        
+        let changed = false;
+        for (const key in input) {
+            if (this.lastInput[key] !== input[key]) {
+                changed = true;
+                this.lastInput[key] = input[key];
+            }
+        }
+        
+        if (changed) {
+            this.inputChanged = true;
+        }
+    }
+
+    // Request full game state from server
+    requestGameState() {
+        if (!this.connected || !this.gameId) return;
+        
+        this.send({
+            type: 'request_game_state',
+            gameId: this.gameId
+        });
     }
 }
 
