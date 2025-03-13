@@ -263,7 +263,7 @@ class NetworkManager {
                     break;
 
                 case 'game_state':
-                    // Full game state from server
+                    // Full game state from server; emit to listeners
                     this.gameState = message.state;
                     this.emit('onGameState', message.state);
                     break;

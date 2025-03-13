@@ -155,10 +155,8 @@ class OnlineGameClient {
     
     handleGameState(state) {
         if (!this.gameSetup || !state) return;
-        
         this.serverGameState = state;
-        
-        // Update local game state to match server
+        // Sync local game entities with server state
         this.syncGameState(state);
     }
     
@@ -293,26 +291,20 @@ class OnlineGameClient {
     
     setupServerManagedGame(data) {
         const mapData = data.mapData || data;
-        
-        // Clear existing game objects
+        // Clear local entities
         window.tanks = [];
         window.bullets = [];
         window.obstacles = [];
         window.powerUps = [];
         window.mines = [];
         
-        // Create obstacles from server data
+        // Create obstacles and tanks from mapData received from server:
         this.createObstaclesFromServerData(mapData.obstacles);
-        
-        // Create tanks from server data
         this.createTanksFromServerData(mapData.tanks);
-        
-        // Create any initial powerups
         if (mapData.powerUps) {
             this.createPowerUpsFromServerData(mapData.powerUps);
         }
         
-        // Mark setup as complete
         this.gameSetup = true;
     }
     

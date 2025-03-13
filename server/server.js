@@ -261,6 +261,7 @@ class GameState {
         
         // Send updated state to clients
         this.sendStateUpdate();
+        this.sendGameState();
     }
     
     updateTanks(deltaTime) {
@@ -1213,53 +1214,46 @@ class GameState {
         const gameId = uuidv4();
         console.log(`Creating game ${gameId} with players: ${players.map(p => p.name).join(', ')}`);
         
-        // Update client states
-        players.forEach((client) => {
+        players.forEach((client, index) => {
             client.inGame = true;
             client.gameId = gameId;
         });
         
-        // Get socket references for each player
         const playerSockets = players.map(client => client.socket);
-        
-        // Create game state
         const game = new GameState(gameId, playerSockets);
         games.set(gameId, game);
         
-        // Setup player IDs and notify
+        // Assign player numbers to tanks in game state
         for (let i = 0; i < game.tanks.length; i++) {
-            game.tanks[i].id = players[i].id;
             game.tanks[i].playerNumber = i + 1;
+            game.tanks[i].id = players[i].id;
         }
         
-        // Generate the map data to send to clients
         const mapData = {
             seed: game.mapSeed,
             obstacles: game.obstacles,
-            tanks: game.tanks.map((tank, idx) => ({
+            tanks: game.tanks.map(tank => ({
                 id: tank.id,
                 x: tank.x,
                 y: tank.y,
                 angle: tank.angle,
-                color: idx === 0 ? "#3498db" : "#e74c3c", // Blue for P1, Red for P2
-                playerNumber: idx + 1
+                color: tank.playerNumber === 1 ? "#3498db" : "#e74c3c",
+                playerNumber: tank.playerNumber
             })),
             powerUps: game.powerUps
         };
         
-        // Send game found notification to players
         players.forEach((client, index) => {
-            const opponent = players[(index + 1) % players.length];
+            // Send game found with player numbers and map seed
             client.socket.send(JSON.stringify({
                 type: 'game_found',
                 gameId: gameId,
-                playerNumber: index + 1, // Player 1 or Player 2
-                opponentName: opponent.name,
+                playerNumber: index + 1,
+                opponent: players[(index+1)%players.length].name,
                 mapSeed: game.mapSeed,
                 timestamp: Date.now()
             }));
-            
-            // Send complete map data right after
+            // Send full game start data
             client.socket.send(JSON.stringify({
                 type: 'game_start',
                 mapData: mapData,
