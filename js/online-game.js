@@ -77,31 +77,23 @@ class OnlineGameManager {
     }
     
     startOnlineGame() {
-        if (this.gameStarted) return;
-        
-        // Ensure seedrandom is available before using it
-        if (typeof Math.seedrandom === 'function') {
-            Math.seedrandom(this.mapSeed);
-            console.log('Using seedrandom with seed:', this.mapSeed);
-        } else {
-            console.warn('Math.seedrandom is not available; using fallback seeded random.');
-            const seed = Number(this.mapSeed) || Date.now();
-            let s = seed;
-            // Simple fallback seeded random function
-            const fallbackRandom = function() {
-                s = (s * 9301 + 49297) % 233280;
-                return s / 233280;
-            };
-            // Override Math.random with our fallback
-            Math.random = fallbackRandom;
+        try {
+            // Instead of calling window.initGame(), call the online game client's initialization
+            if (window.onlineGameClient && typeof window.onlineGameClient.initialize === 'function') {
+                window.onlineGameClient.initialize();
+            } else {
+                console.error('onlineGameClient.initialize is not available');
+            }
+            
+            // Now start the game using the online game client
+            if (window.onlineGameClient && typeof window.onlineGameClient.startGame === 'function') {
+                window.onlineGameClient.startGame();
+            } else {
+                console.error('onlineGameClient.startGame is not available');
+            }
+        } catch (err) {
+            console.error('Error in startOnlineGame:', err);
         }
-        
-        // Initialize the game using the seeded random
-        window.initGame();
-        this.startStateSync();
-        
-        this.gameStarted = true;
-        console.log('Online game started as Player', this.playerNumber);
     }
     
     startStateSync() {

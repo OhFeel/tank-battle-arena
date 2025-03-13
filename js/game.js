@@ -3043,4 +3043,3 @@ TankStatusUI.prototype.updateTankStatus = function(tank, playerNum) {
     
     // ...existing code...
 };
-`
