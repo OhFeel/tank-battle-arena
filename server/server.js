@@ -1161,7 +1161,21 @@ class GameState {
         const game = new GameState(gameId, playerSockets);
         games.set(gameId, game);
         
-        // Send game found notification to players
+        // Generate the map and obstacles
+        const mapData = {
+            seed: game.mapSeed,
+            obstacles: game.obstacles,
+            tanks: game.tanks.map(tank => ({
+                id: tank.id,
+                x: tank.x,
+                y: tank.y,
+                playerNumber: players.findIndex(p => p.id === tank.id) + 1,
+                color: tank.color
+            })),
+            powerUps: game.powerUps
+        };
+        
+        // Send game found notification to players first
         players.forEach((client, index) => {
             const opponent = players[(index + 1) % players.length];
             client.socket.send(JSON.stringify({
@@ -1170,9 +1184,17 @@ class GameState {
                 playerNumber: index + 1,
                 opponent: opponent.name,
                 mapSeed: game.mapSeed,
-                tankPositions: game.tanks.map(t => ({ id: t.id, x: t.x, y: t.y })),
                 timestamp: Date.now()
             }));
+            
+            // Then send complete map data
+            setTimeout(() => {
+                client.socket.send(JSON.stringify({
+                    type: 'game_start',
+                    mapData: mapData,
+                    timestamp: Date.now()
+                }));
+            }, 1000);
         });
         
         // Start game update loop
@@ -1212,4 +1234,3 @@ class GameState {
     setInterval(() => {
         console.log(`Server status: ${connectedClients.size} clients, ${waitingPlayers.length} waiting, ${games.size} active games`);
     }, 60000); // Every minute
-    

@@ -54,14 +54,21 @@ class OnlineGameManager {
             window.onlineUI.hideImmediately();
         }
         
-        // Show countdown and start game
-        setTimeout(() => {
-            if (window.showCountdown) {
-                window.showCountdown();
-            } else {
-                this.startOnlineGame();
-            }
-        }, 1000);
+        // Use server-authoritative client instead of local generation
+        if (window.onlineGameClient) {
+            window.onlineGameClient.initialize();
+        } else {
+            console.error('Online game client not available, falling back to local generation');
+            
+            // Fallback to old method
+            setTimeout(() => {
+                if (window.showCountdown) {
+                    window.showCountdown();
+                } else {
+                    this.startOnlineGame();
+                }
+            }, 1000);
+        }
     }
     
     handleGameStart(data) {

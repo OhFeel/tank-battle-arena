@@ -1769,6 +1769,40 @@ function initGame() {
         }, 2)
     ];
     
+    // If in online mode, show a visual indicator of which tank the player controls
+    if (window.onlineGameManager && window.onlineGameManager.isOnlineGame) {
+        const playerIndicator = document.createElement('div');
+        playerIndicator.id = 'playerIndicator';
+        playerIndicator.className = 'player-indicator';
+        
+        const localPlayerNumber = window.onlineGameManager.playerNumber;
+        const tankColor = localPlayerNumber === 1 ? 'Blue' : 'Red';
+        const colorStyle = localPlayerNumber === 1 ? '#3498db' : '#e74c3c';
+        
+        playerIndicator.innerHTML = `<span>You are controlling the <span id="playerColor" style="color:${colorStyle}">${tankColor}</span> tank</span>`;
+        document.querySelector('.game-container').appendChild(playerIndicator);
+        
+        // Remove indicator after 5 seconds
+        setTimeout(() => {
+            if (playerIndicator.parentNode) {
+                playerIndicator.parentNode.removeChild(playerIndicator);
+            }
+        }, 5000);
+        
+        // Update the player names in the UI
+        if (window.onlineGameManager.opponentName && localPlayerNumber) {
+            const p1Name = localPlayerNumber === 1 ? 'You' : window.onlineGameManager.opponentName;
+            const p2Name = localPlayerNumber === 2 ? 'You' : window.onlineGameManager.opponentName;
+            
+            // Update player name displays if they exist
+            const p1NameEl = document.getElementById('p1Name');
+            const p2NameEl = document.getElementById('p2Name');
+            
+            if (p1NameEl) p1NameEl.textContent = p1Name;
+            if (p2NameEl) p2NameEl.textContent = p2Name;
+        }
+    }
+    
     // Reset game state and stats
     bullets = [];
     powerUps = [];
@@ -2476,7 +2510,7 @@ try {
     console.warn('Could not check or create asset directories:', err);
 }
 
-/* Update the handleKeyDown function for better input handling */
+/* Update the handleKeyDown function for online multiplayer support */
 function handleKeyDown(e) {
     // Prevent default actions for game keys
     if (['w', 's', 'a', 'd', ' ', 'e', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '/', '.'].includes(e.key)) {
@@ -2492,9 +2526,22 @@ function handleKeyDown(e) {
     // Control tanks
     if (!gameState.active || gameState.over) return;
     
+    // Check if we're in online mode
+    const isOnlineMode = window.onlineGameManager && window.onlineGameManager.isOnlineGame;
+    
     for (let tank of tanks) {
         if (!tank.controls) continue;
         
+        // In online mode, only allow controlling your own tank
+        if (isOnlineMode) {
+            // Skip if not the local player's tank
+            const localPlayerNumber = window.onlineGameManager.playerNumber;
+            if (tank.playerNumber !== localPlayerNumber) {
+                continue;
+            }
+        }
+        
+        // Process keyboard input for this tank
         if (e.key === tank.controls.forward) {
             tank.moving.forward = true;
         }
@@ -2510,25 +2557,38 @@ function handleKeyDown(e) {
         if (e.key === tank.controls.shoot) {
             tank.shooting = true;
         }
-        if (e.key === tank.controls.mine) {  // New control for mine laying
+        if (e.key === tank.controls.mine) {
             tank.layingMine = true;
         }
     }
 }
 
-// Similarly update handleKeyUp
+// Similarly update handleKeyUp for online mode
 function handleKeyUp(e) {
     if (!gameState.active || gameState.over) return;
+    
+    // Check if we're in online mode
+    const isOnlineMode = window.onlineGameManager && window.onlineGameManager.isOnlineGame;
     
     for (let tank of tanks) {
         if (!tank.controls) continue;
         
+        // In online mode, only allow controlling your own tank
+        if (isOnlineMode) {
+            // Skip if not the local player's tank
+            const localPlayerNumber = window.onlineGameManager.playerNumber;
+            if (tank.playerNumber !== localPlayerNumber) {
+                continue;
+            }
+        }
+        
+        // Process keyboard input for this tank
         if (e.key === tank.controls.forward) tank.moving.forward = false;
         if (e.key === tank.controls.backward) tank.moving.backward = false;
         if (e.key === tank.controls.left) tank.moving.left = false;
         if (e.key === tank.controls.right) tank.moving.right = false;
         if (e.key === tank.controls.shoot) tank.shooting = false;
-        if (e.key === tank.controls.mine) tank.layingMine = false;  // New control for mine laying
+        if (e.key === tank.controls.mine) tank.layingMine = false;
     }
 }
 

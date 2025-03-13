@@ -31,7 +31,9 @@ class NetworkManager {
             onPowerUpCollected: [],
             onPositionConfirmation: [],
             onGameStateSync: [],
-            onStateUpdate: [] // New callback for state updates
+            onStateUpdate: [], // New callback for state updates
+            onMapData: [],         // Add new callback for map data
+            onGameStart: []       // Make sure we have this one
         };
         
         // Add properties for game synchronization
@@ -202,8 +204,8 @@ class NetworkManager {
                     break;
 
                 case 'game_start':
-                    console.log('Game starting!');
-                    this.emit('onGameStart', message);
+                    console.log('Game starting with map seed:', message.mapSeed);
+                    this._triggerCallbacks('onGameStart', message);
                     break;
 
                 case 'state_update':
@@ -238,6 +240,11 @@ class NetworkManager {
                     console.log(`Current latency: ${this.latency}ms`);
                     break;
                     
+                case 'map_data':
+                    console.log('Received map data from server');
+                    this._triggerCallbacks('onMapData', message.mapData);
+                    break;
+
                 default:
                     console.log('Unknown message type:', message.type);
             }
