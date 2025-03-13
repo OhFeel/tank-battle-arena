@@ -81,7 +81,9 @@ class OnlineUIManager {
                 this.updateStatus(`Game found! Playing against ${data.opponentName}`);
                 this.matchmaking = false;
                 this.showMatchmakingUI(false);
-                setTimeout(() => this.hide(), 1500);
+                
+                // Hide the menu immediately when a game is found
+                this.hideImmediately();
             });
         }
     }
@@ -119,6 +121,16 @@ class OnlineUIManager {
         // Show start screen again
         const startScreen = document.getElementById('startScreen');
         if (startScreen) startScreen.classList.remove('hidden');
+        
+        // Cancel matchmaking if active
+        if (this.matchmaking) {
+            this.cancelMatchmaking();
+        }
+    }
+    
+    // New method to hide immediately without animation or showing start screen
+    hideImmediately() {
+        this.container.classList.add('hidden');
         
         // Cancel matchmaking if active
         if (this.matchmaking) {

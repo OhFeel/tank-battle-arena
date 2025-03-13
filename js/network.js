@@ -6,14 +6,17 @@ class NetworkManager {
     constructor() {
         this.socket = null;
         this.connected = false;
+        this.serverUrl = 'ws://localhost:3000'; // Change this to your server's public address for remote play
+        this.clientId = null;
+        this.eventHandlers = {};
+        this.latency = 0;
+        this.lastPingSent = 0;
         this.playerId = null;
         this.gameId = null;
         this.playerNumber = null;
         this.opponentName = null;
         this.pingInterval = null;
         this.lastPingTime = 0;
-        this.latency = 0;
-        this.serverUrl = 'ws://localhost:3000'; // Change to your server URL in production
         this.autoConnect = true;
         this.mapSeed = null;
         this.callbacks = {
@@ -46,9 +49,15 @@ class NetworkManager {
     // Connect to game server
     connect(serverUrl = this.serverUrl) {
         return new Promise((resolve, reject) => {
+            if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                console.log('Already connected');
+                resolve();
+                return;
+            }
+            
+            console.log('Connecting to server:', this.serverUrl);
+            
             try {
-                this.serverUrl = serverUrl;
-                console.log(`Connecting to server: ${this.serverUrl}`);
                 this.socket = new WebSocket(this.serverUrl);
                 
                 this.socket.onopen = () => {
@@ -56,7 +65,7 @@ class NetworkManager {
                     this.connected = true;
                     this.networkReady = true;
                     this.startPingInterval();
-                    this._triggerCallbacks('onConnected');
+                    this.emit('onConnected');
                     resolve();
                 };
                 
@@ -65,7 +74,7 @@ class NetworkManager {
                     this.connected = false;
                     this.networkReady = false;
                     clearInterval(this.pingInterval);
-                    this._triggerCallbacks('onDisconnected');
+                    this.emit('onDisconnected');
                     
                     // Auto-reconnect if it was an abnormal closure and we were in a game
                     if (this.connectedToGame && event.code !== 1000 && event.code !== 1001) {
@@ -76,15 +85,17 @@ class NetworkManager {
                 
                 this.socket.onerror = (error) => {
                     console.error('WebSocket error:', error);
-                    this._triggerCallbacks('onError', error);
-                    reject(error);
+                    this.emit('onError', 'Connection error');
+                    reject('Connection error');
                 };
                 
                 this.socket.onmessage = (event) => {
                     this.handleMessage(event.data);
                 };
+                
             } catch (error) {
-                console.error('Connection error:', error);
+                console.error('Failed to connect:', error);
+                this.emit('onError', 'Failed to connect');
                 reject(error);
             }
         });
@@ -127,7 +138,12 @@ class NetworkManager {
     
     // Find a game
     findGame(playerName) {
-        return this.send({
+        if (!this.connected) {
+            console.error('Not connected to server');
+            return;
+        }
+        
+        this.sendMessage({
             type: 'find_game',
             name: playerName
         });
@@ -135,7 +151,9 @@ class NetworkManager {
     
     // Cancel matchmaking
     cancelMatchmaking() {
-        return this.send({
+        if (!this.connected) return;
+        
+        this.sendMessage({
             type: 'cancel_matchmaking'
         });
     }
@@ -185,35 +203,24 @@ class NetworkManager {
 
                 case 'game_start':
                     console.log('Game starting!');
-                    this._triggerCallbacks('onGameStart');
+                    this.emit('onGameStart', message);
                     break;
 
                 case 'state_update':
-                    this._triggerCallbacks('onStateUpdate', {
-                        tanks: message.tanks,
-                        bullets: message.bullets,
-                        powerUps: message.powerUps,
-                        timestamp: message.timestamp
-                    });
+                    this.emit('onStateUpdate', message);
                     break;
                     
                 case 'power_up_spawned':
-                    this._triggerCallbacks('onPowerUpSpawn', {
-                        powerUp: message.powerUp
-                    });
+                    this.emit('onPowerUpSpawned', message);
                     break;
 
                 case 'opponent_input':
-                    this._triggerCallbacks('onOpponentInput', {
-                        playerNumber: message.playerNumber,
-                        input: message.input,
-                        timestamp: message.timestamp
-                    });
+                    this.emit('onOpponentInput', message);
                     break;
                     
                 case 'opponent_disconnected':
                     console.log('Opponent disconnected');
-                    this._triggerCallbacks('onOpponentDisconnected');
+                    this.emit('onOpponentDisconnected');
                     break;
                     
                 case 'ping':
@@ -307,6 +314,36 @@ class NetworkManager {
         this.mapSeed = null;
         this.connectedToGame = false;
         this.predictedMoves = [];
+    }
+    
+    pingServer() {
+        if (this.connected) {
+            this.lastPingSent = Date.now();
+            this.sendMessage({
+                type: 'ping',
+                timestamp: this.lastPingSent
+            });
+            
+            // Schedule next ping
+            setTimeout(() => this.pingServer(), 5000);
+        }
+    }
+    
+    sendMessage(data) {
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+            console.error('Socket not open');
+            return;
+        }
+        
+        this.socket.send(JSON.stringify(data));
+    }
+    
+    emit(event, data) {
+        if (this.eventHandlers[event]) {
+            for (const handler of this.eventHandlers[event]) {
+                handler(data);
+            }
+        }
     }
 }
 
