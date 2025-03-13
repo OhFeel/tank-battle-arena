@@ -400,18 +400,25 @@ class NetworkManager {
     
     // Update input state - call this when input changes
     updateInput(input) {
-        if (!this.lastInput) this.lastInput = {};
-        
+        if (!this.lastInput) {
+            this.lastInput = {};
+        }
         let changed = false;
         for (const key in input) {
             if (this.lastInput[key] !== input[key]) {
                 changed = true;
-                this.lastInput[key] = input[key];
+                break;
             }
         }
-        
         if (changed) {
-            this.inputChanged = true;
+            this.lastInput = { ...input };
+            this.sendMessage({
+                type: 'player_input',
+                input: input,
+                timestamp: Date.now(),
+                playerId: this.playerId,
+                gameId: this.gameId
+            });
         }
     }
 
