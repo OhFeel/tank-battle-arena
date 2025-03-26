@@ -2226,8 +2226,8 @@ function checkBulletCollisions() {
             let tank = tanks[j];
             let tankPlayerId = j + 1;
             
-            // Skip if bullet belongs to this tank
-            if (bullet.owner === tankPlayerId) continue;
+            // Skip if bullet belongs to this tank AND hasn't bounced yet
+            if (bullet.owner === tankPlayerId && bullet.bounces === 0) continue;
             
             // Check collision
             if (tank.respawning) continue; // Skip if tank is respawning
