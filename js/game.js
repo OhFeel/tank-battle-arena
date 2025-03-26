@@ -1350,25 +1350,24 @@ class PowerUp {
         ctx.fillStyle = this.getColor();
         ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
         
-        // Draw icon based on power-up type - update to match the tank status UI icons
-        ctx.fillStyle = "white";
+        // Draw icon - match the tank status UI styles
         ctx.strokeStyle = "white";
+        ctx.fillStyle = "white";
         ctx.lineWidth = 2;
         
         switch(this.type) {
             case POWER_UP_TYPES.SHIELD:
-                // Shield icon - circle
+                // Circle shield icon
                 ctx.beginPath();
                 ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
                 ctx.stroke();
                 break;
                 
             case POWER_UP_TYPES.RICOCHET:
-                // Ricochet icon - X with square
+                // Square with X inside
                 ctx.beginPath();
                 ctx.rect(-this.width/5, -this.width/5, this.width/2.5, this.width/2.5);
                 ctx.stroke();
-                
                 ctx.beginPath();
                 ctx.moveTo(-this.width/8, -this.width/8);
                 ctx.lineTo(this.width/8, this.width/8);
@@ -1378,7 +1377,7 @@ class PowerUp {
                 break;
                 
             case POWER_UP_TYPES.PIERCING:
-                // Piercing icon - vertical line
+                // Vertical line
                 ctx.lineWidth = 3;
                 ctx.beginPath();
                 ctx.moveTo(0, -this.width/3);
@@ -1387,7 +1386,7 @@ class PowerUp {
                 break;
                 
             case POWER_UP_TYPES.SPEED_BOOST:
-                // Speed boost icon - horizontal arrow
+                // Arrow to the right
                 ctx.beginPath();
                 ctx.moveTo(-this.width/3, 0);
                 ctx.lineTo(this.width/3, 0);
@@ -1398,20 +1397,16 @@ class PowerUp {
                 break;
                 
             case POWER_UP_TYPES.RAPID_FIRE:
-                // Rapid fire icon - three dots
-                ctx.beginPath();
-                ctx.arc(-this.width/8, 0, this.width/12, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(0, 0, this.width/12, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(this.width/8, 0, this.width/12, 0, Math.PI * 2);
-                ctx.fill();
+                // Three dots
+                [0.33, 0.5, 0.67].forEach(x => {
+                    ctx.beginPath();
+                    ctx.arc(this.width * (x - 0.5), 0, this.width/12, 0, Math.PI * 2);
+                    ctx.fill();
+                });
                 break;
                 
             case POWER_UP_TYPES.MINE_LAYER:
-                // Mine layer icon - circle with cross
+                // Circle with cross inside
                 ctx.beginPath();
                 ctx.arc(0, 0, this.width/5, 0, Math.PI * 2);
                 ctx.moveTo(-this.width/8, 0);
@@ -1422,7 +1417,7 @@ class PowerUp {
                 break;
                 
             case POWER_UP_TYPES.SPREAD_SHOT:
-                // Spread shot icon - three diverging lines
+                // Three diverging lines
                 ctx.beginPath();
                 ctx.moveTo(0, 0);
                 ctx.lineTo(0, -this.width/4);
@@ -1434,12 +1429,10 @@ class PowerUp {
                 break;
                 
             case POWER_UP_TYPES.MAGNETIC_SHIELD:
-                // Magnetic shield icon - wavy circle with magnet
+                // Circle with magnet symbol
                 ctx.beginPath();
                 ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
                 ctx.stroke();
-                
-                // Add magnet symbol
                 ctx.beginPath();
                 ctx.rect(-this.width/12, -this.width/6, this.width/6, this.width/12);
                 ctx.moveTo(-this.width/12, -this.width/6);
@@ -1450,14 +1443,12 @@ class PowerUp {
                 break;
                 
             case POWER_UP_TYPES.INVISIBILITY:
-                // Invisibility icon - dotted square
+                // Dotted circle with crossed out eye
                 ctx.setLineDash([2, 2]);
                 ctx.beginPath();
                 ctx.rect(-this.width/4, -this.width/4, this.width/2, this.width/2);
                 ctx.stroke();
                 ctx.setLineDash([]);
-                
-                // Add crossed-out eye
                 ctx.beginPath();
                 ctx.arc(0, 0, this.width/10, 0, Math.PI * 2);
                 ctx.moveTo(-this.width/6, -this.width/6);
@@ -1466,91 +1457,28 @@ class PowerUp {
                 break;
                 
             case POWER_UP_TYPES.MEGA_BULLET:
-                // Mega bullet icon - large filled dot
+                // Large dot with outer circle
                 ctx.beginPath();
                 ctx.arc(0, 0, this.width/5, 0, Math.PI * 2);
                 ctx.fill();
-                
-                // Add outer circle
                 ctx.beginPath();
                 ctx.arc(0, 0, this.width/3.5, 0, Math.PI * 2);
                 ctx.stroke();
                 break;
                 
-            case POWER_UP_TYPES.TELEPORT:
-                // Teleport icon - two dots with curved arrow
-                ctx.beginPath();
-                ctx.arc(-this.width/5, -this.width/5, this.width/12, 0, Math.PI * 2);
-                ctx.fill();
-                
-                ctx.beginPath();
-                ctx.arc(this.width/5, this.width/5, this.width/12, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Draw curved arrow
-                ctx.beginPath();
-                ctx.arc(0, 0, this.width/4, 0.8, 3.8, false);
-                ctx.stroke();
-                
-                // Arrow head
-                ctx.beginPath();
-                ctx.moveTo(this.width/5 - this.width/15, this.width/5 - this.width/15);
-                ctx.lineTo(this.width/5, this.width/5);
-                ctx.lineTo(this.width/5 + this.width/15, this.width/5 - this.width/15);
-                ctx.stroke();
-                break;
-                
-            case POWER_UP_TYPES.EMP_BLAST:
-                // EMP icon - electricity symbol
-                ctx.beginPath();
-                ctx.arc(0, 0, this.width/4, 0, Math.PI * 2, false);
-                ctx.stroke();
-                
-                // Lightning
-                ctx.beginPath();
-                ctx.moveTo(-this.width/8, -this.width/4);
-                ctx.lineTo(0, 0);
-                ctx.lineTo(-this.width/8, this.width/4);
-                ctx.stroke();
-                
-                ctx.beginPath();
-                ctx.moveTo(this.width/8, -this.width/4);
-                ctx.lineTo(0, 0);
-                ctx.lineTo(this.width/8, this.width/4);
-                ctx.stroke();
-                break;
-                
-            case POWER_UP_TYPES.EXTRA_LIFE:
-                // Extra life icon - plus sign in circle
-                ctx.beginPath();
-                ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
-                ctx.stroke();
-                
-                ctx.beginPath();
-                ctx.moveTo(-this.width/8, 0);
-                ctx.lineTo(this.width/8, 0);
-                ctx.moveTo(0, -this.width/8);
-                ctx.lineTo(0, this.width/8);
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                break;
-                
             case POWER_UP_TYPES.HOMING_MISSILE:
-                // Homing missile icon - target with missile
+                // Target with missile
                 ctx.beginPath();
                 ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
                 ctx.stroke();
-                
                 ctx.beginPath();
                 ctx.arc(0, 0, this.width/8, 0, Math.PI * 2);
                 ctx.stroke();
-                
-                // Missile
+                // Add missile
                 ctx.beginPath();
                 ctx.moveTo(-this.width/4, -this.width/4);
                 ctx.lineTo(-this.width/12, -this.width/12);
                 ctx.stroke();
-                
                 // Draw small triangle for missile head
                 ctx.beginPath();
                 ctx.moveTo(-this.width/4 - 2, -this.width/4 - 2);
@@ -1558,6 +1486,35 @@ class PowerUp {
                 ctx.lineTo(-this.width/4, -this.width/4 + 4);
                 ctx.closePath();
                 ctx.fill();
+                break;
+                
+            case POWER_UP_TYPES.EMP_BLAST:
+                // Circle with lightning
+                ctx.beginPath();
+                ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
+                ctx.stroke();
+                // Lightning bolts
+                ctx.beginPath();
+                ctx.moveTo(-this.width/8, -this.width/4);
+                ctx.lineTo(0, 0);
+                ctx.lineTo(-this.width/8, this.width/4);
+                ctx.moveTo(this.width/8, -this.width/4);
+                ctx.lineTo(0, 0);
+                ctx.lineTo(this.width/8, this.width/4);
+                ctx.stroke();
+                break;
+                
+            case POWER_UP_TYPES.EXTRA_LIFE:
+                // Circle with plus sign
+                ctx.beginPath();
+                ctx.arc(0, 0, this.width/4, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(-this.width/8, 0);
+                ctx.lineTo(this.width/8, 0);
+                ctx.moveTo(0, -this.width/8);
+                ctx.lineTo(0, this.width/8);
+                ctx.stroke();
                 break;
         }
         

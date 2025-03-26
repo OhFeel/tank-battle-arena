@@ -282,43 +282,20 @@ class TankStatusUI {
         }
     }
 
-    updatePowerUpUI(panel, type, isActive, currentTimer, maxDuration, count = null) {
+    updatePowerUpUI(panel, type, isActive, currentTimer, maxDuration) {
         const powerUpElement = panel.querySelector(`[data-type="${type}"]`);
         if (!powerUpElement) return;
+
+        powerUpElement.classList.toggle('active', isActive);
         
-        // Update active state
-        if (isActive) {
-            powerUpElement.classList.add('active');
-            
-            // If we have a count, show it
-            if (count !== null && count > 0) {
-                const countElement = powerUpElement.querySelector('.power-up-count');
-                if (!countElement) {
-                    const newCountElement = document.createElement('div');
-                    newCountElement.className = 'power-up-count';
-                    newCountElement.textContent = count;
-                    powerUpElement.appendChild(newCountElement);
-                } else {
-                    countElement.textContent = count;
-                }
-            }
-        } else {
-            powerUpElement.classList.remove('active');
-            
-            // Remove count element if it exists
-            const countElement = powerUpElement.querySelector('.power-up-count');
-            if (countElement) {
-                countElement.remove();
-            }
-        }
+        // Remove any existing tooltip text
+        powerUpElement.removeAttribute('title');
         
-        // Update timer bar if applicable
-        if (currentTimer && maxDuration) {
-            const timerBar = powerUpElement.querySelector('.power-up-timer-bar');
-            if (timerBar) {
-                const percentage = (currentTimer / maxDuration) * 100;
-                timerBar.style.width = `${percentage}%`;
-            }
+        // Update the timer bar if it exists and we have a timer
+        const timerBar = powerUpElement.querySelector('.power-up-timer-bar');
+        if (timerBar && currentTimer !== null && maxDuration) {
+            const percentage = (currentTimer / maxDuration) * 100;
+            timerBar.style.width = `${percentage}%`;
         }
     }
 }
