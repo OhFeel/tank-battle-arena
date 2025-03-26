@@ -333,12 +333,6 @@ class Tank {
     }
     
     layMine() {
-        // If in online mode, send the mine-laying action to the server
-        if (window.networkManager && window.onlineGameManager && window.onlineGameManager.isOnlineGame) {
-            window.networkManager.sendGameInput({ layingMine: true });
-            return; // Skip immediate local mine placement
-        }
-        
         if (this.mines <= 0) return;
         
         // Don't allow placing mines too frequently
@@ -379,12 +373,6 @@ class Tank {
     }
 
     shoot() {
-        // If in online mode, send the shoot action to the server
-        if (window.networkManager && window.onlineGameManager && window.onlineGameManager.isOnlineGame) {
-            window.networkManager.sendGameInput({ shooting: true });
-            return; // Skip immediate local shooting in server-authoritative mode
-        }
-
         if (this.ammo <= 0 || !this.canShoot || this.empActive) return;
 
         // Store the bullet properties we'll use
@@ -1781,40 +1769,6 @@ function initGame() {
         }, 2)
     ];
     
-    // If in online mode, show a visual indicator of which tank the player controls
-    if (window.onlineGameManager && window.onlineGameManager.isOnlineGame) {
-        const playerIndicator = document.createElement('div');
-        playerIndicator.id = 'playerIndicator';
-        playerIndicator.className = 'player-indicator';
-        
-        const localPlayerNumber = window.onlineGameManager.playerNumber;
-        const tankColor = localPlayerNumber === 1 ? 'Blue' : 'Red';
-        const colorStyle = localPlayerNumber === 1 ? '#3498db' : '#e74c3c';
-        
-        playerIndicator.innerHTML = `<span>You are controlling the <span id="playerColor" style="color:${colorStyle}">${tankColor}</span> tank</span>`;
-        document.querySelector('.game-container').appendChild(playerIndicator);
-        
-        // Remove indicator after 5 seconds
-        setTimeout(() => {
-            if (playerIndicator.parentNode) {
-                playerIndicator.parentNode.removeChild(playerIndicator);
-            }
-        }, 5000);
-        
-        // Update the player names in the UI
-        if (window.onlineGameManager.opponentName && localPlayerNumber) {
-            const p1Name = localPlayerNumber === 1 ? 'You' : window.onlineGameManager.opponentName;
-            const p2Name = localPlayerNumber === 2 ? 'You' : window.onlineGameManager.opponentName;
-            
-            // Update player name displays if they exist
-            const p1NameEl = document.getElementById('p1Name');
-            const p2NameEl = document.getElementById('p2Name');
-            
-            if (p1NameEl) p1NameEl.textContent = p1Name;
-            if (p2NameEl) p2NameEl.textContent = p2Name;
-        }
-    }
-    
     // Reset game state and stats
     bullets = [];
     powerUps = [];
@@ -1872,10 +1826,34 @@ function spawnPowerUp() {
 
 // Game loop
 let lastTime = 0;
+const FPS = 60;
+const frameTime = 1000 / FPS;
+
+// Add FPS tracking variables
+let frameCount = 0;
+let lastFpsUpdate = 0;
+let currentFps = 60;
+const fpsUpdateInterval = 500; // Update FPS display every 500ms
 
 function gameLoop(timestamp) {
-    // Calculate delta time
+    // Calculate time since last frame
     const deltaTime = lastTime ? timestamp - lastTime : 0;
+    
+    // FPS calculation
+    frameCount++;
+    if (timestamp - lastFpsUpdate >= fpsUpdateInterval) {
+        currentFps = Math.round((frameCount * 1000) / (timestamp - lastFpsUpdate));
+        document.getElementById('fpsCounter').textContent = `FPS: ${currentFps}`;
+        frameCount = 0;
+        lastFpsUpdate = timestamp;
+    }
+    
+    // Skip frame if less than desired frame time has elapsed
+    if (deltaTime < frameTime) {
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+    
     lastTime = timestamp;
     
     if (gameState.countdown) {
@@ -2522,7 +2500,7 @@ try {
     console.warn('Could not check or create asset directories:', err);
 }
 
-/* Update the handleKeyDown function for online multiplayer support */
+/* Update the handleKeyDown function to remove online checks */
 function handleKeyDown(e) {
     // Prevent default actions for game keys
     if (['w', 's', 'a', 'd', ' ', 'e', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '/', '.'].includes(e.key)) {
@@ -2538,74 +2516,25 @@ function handleKeyDown(e) {
     // Control tanks
     if (!gameState.active || gameState.over) return;
     
-    // Check if we're in online mode
-    const isOnlineMode = window.onlineGameManager && window.onlineGameManager.isOnlineGame;
-    
     for (let tank of tanks) {
         if (!tank.controls) continue;
         
-        // In online mode, only allow controlling your own tank
-        if (isOnlineMode) {
-            // Skip if not the local player's tank
-            const localPlayerNumber = window.onlineGameManager.playerNumber;
-            if (tank.playerNumber !== localPlayerNumber) {
-                continue;
-            }
-        }
-        
         // Process keyboard input for this tank
-        if (e.key === tank.controls.forward) {
-            tank.moving.forward = true;
-        }
-        if (e.key === tank.controls.backward) {
-            tank.moving.backward = true;
-        }
-        if (e.key === tank.controls.left) {
-            tank.moving.left = true;
-        }
-        if (e.key === tank.controls.right) {
-            tank.moving.right = true;
-        }
-        if (e.key === tank.controls.shoot) {
-            tank.shooting = true;
-        }
-        if (e.key === tank.controls.mine) {
-            tank.layingMine = true;
-        }
-        // ...existing code...
-        if (window.networkManager && window.onlineGameManager && window.onlineGameManager.isOnlineGame &&
-            tank.playerNumber === window.onlineGameManager.playerNumber) {
-            const inputState = {
-                forward: tank.moving.forward,
-                backward: tank.moving.backward,
-                left: tank.moving.left,
-                right: tank.moving.right,
-                shooting: tank.shooting,
-                layingMine: tank.layingMine
-            };
-            window.networkManager.updateInput(inputState);
-        }
+        if (e.key === tank.controls.forward) tank.moving.forward = true;
+        if (e.key === tank.controls.backward) tank.moving.backward = true;
+        if (e.key === tank.controls.left) tank.moving.left = true;
+        if (e.key === tank.controls.right) tank.moving.right = true;
+        if (e.key === tank.controls.shoot) tank.shooting = true;
+        if (e.key === tank.controls.mine) tank.layingMine = true;
     }
 }
 
-// Similarly update handleKeyUp for online mode
+/* Update handleKeyUp to remove online checks */
 function handleKeyUp(e) {
     if (!gameState.active || gameState.over) return;
     
-    // Check if we're in online mode
-    const isOnlineMode = window.onlineGameManager && window.onlineGameManager.isOnlineGame;
-    
     for (let tank of tanks) {
         if (!tank.controls) continue;
-        
-        // In online mode, only allow controlling your own tank
-        if (isOnlineMode) {
-            // Skip if not the local player's tank
-            const localPlayerNumber = window.onlineGameManager.playerNumber;
-            if (tank.playerNumber !== localPlayerNumber) {
-                continue;
-            }
-        }
         
         // Process keyboard input for this tank
         if (e.key === tank.controls.forward) tank.moving.forward = false;
@@ -2614,19 +2543,6 @@ function handleKeyUp(e) {
         if (e.key === tank.controls.right) tank.moving.right = false;
         if (e.key === tank.controls.shoot) tank.shooting = false;
         if (e.key === tank.controls.mine) tank.layingMine = false;
-        // ...existing code...
-        if (window.networkManager && window.onlineGameManager && window.onlineGameManager.isOnlineGame &&
-            tank.playerNumber === window.onlineGameManager.playerNumber) {
-            const inputState = {
-                forward: tank.moving.forward,
-                backward: tank.moving.backward,
-                left: tank.moving.left,
-                right: tank.moving.right,
-                shooting: tank.shooting,
-                layingMine: tank.layingMine
-            };
-            window.networkManager.updateInput(inputState);
-        }
     }
 }
 
