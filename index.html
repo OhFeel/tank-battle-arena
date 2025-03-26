@@ -228,9 +228,17 @@
     <script>
         // Error handling for script loading
         window.addEventListener('error', function(e) {
-            console.error('Script error:', e);
-            document.getElementById('errorMessage').style.display = 'block';
-        });
+            // Only show error message for actual script loading errors
+            if (e.filename) {
+                console.error('Script loading error:', {
+                    message: e.message,
+                    filename: e.filename,
+                    lineno: e.lineno,
+                    colno: e.colno
+                });
+                document.getElementById('errorMessage').style.display = 'block';
+            }
+        }, true);
         
         // Check if CSS loaded properly
         window.addEventListener('load', function() {
@@ -270,8 +278,8 @@
     
     <!-- Scripts - update order to ensure proper loading -->
     <script src="js/seedrandom.min.js"></script>
-    <script src="js/tank-status.js"></script>
-    <script src="js/game.js"></script>
-    <script src="js/victory-screen.js"></script>
+    <script src="js/tank-status.js" defer></script>
+    <script src="js/game.js" defer></script>
+    <script src="js/victory-screen.js" defer></script>
 </body>
 </html>
